@@ -1,0 +1,171 @@
+# News sources. Only links on each source's own domain are collected; robots.txt is checked
+# before every request. To add a source, append an entry; to pause one, set enabled: false;
+# to remove one, delete it.
+#
+# Collection methods per source (all optional):
+#   rss                    RSS/Atom feeds, read every run. Items are kept if headline/summary
+#                          contains a disease keyword.
+#   sitemaps               News sitemaps (every article of the last ~48 h, usually with title and
+#                          keywords), read every run. Items are kept if title/keywords/URL contain a keyword.
+#                          A sitemap index is allowed; all its children are read.
+#   archive_sitemaps       Sitemap indexes with daily/weekly/monthly archives. Read only in backfill
+#                          mode; only children overlapping the lookback window are downloaded.
+#   archive_child_pattern  Regex selecting which children of the archive index to read.
+#   keyword_pages          The site's own topic/tag/search page, one per disease search term
+#                          (config/diseases.yaml -> search_terms). Placeholders:
+#                            {slug}  term in lowercase with hyphens, e.g. "swine-flu"
+#                            {query} URL-encoded term, e.g. "swine+flu"
+#                            {page}  page number (only if the site paginates; page 1 every run,
+#                                    up to settings.backfill_max_pages during backfill)
+#                          Every listed article is downloaded and kept if its text contains a keyword.
+#   article_pattern        Regex on the URL path identifying article links (used for keyword
+#                          pages and sitemaps, which also list section/topic pages).
+
+sources:
+  - name: The Hindu
+    enabled: true
+    domain: www.thehindu.com
+    rss:   # no archive sitemap, so state and city feeds (each ~60 items, 3-6 days) widen coverage
+      - https://www.thehindu.com/sci-tech/health/feeder/default.rss
+      - https://www.thehindu.com/news/national/feeder/default.rss
+      - https://www.thehindu.com/news/states/feeder/default.rss
+      - https://www.thehindu.com/news/cities/feeder/default.rss
+      - https://www.thehindu.com/news/national/kerala/feeder/default.rss
+      - https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss
+      - https://www.thehindu.com/news/national/karnataka/feeder/default.rss
+      - https://www.thehindu.com/news/national/andhra-pradesh/feeder/default.rss
+      - https://www.thehindu.com/news/national/telangana/feeder/default.rss
+      - https://www.thehindu.com/news/national/other-states/feeder/default.rss
+      - https://www.thehindu.com/news/cities/chennai/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Delhi/feeder/default.rss
+      - https://www.thehindu.com/news/cities/bangalore/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Hyderabad/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Mumbai/feeder/default.rss
+      - https://www.thehindu.com/news/cities/kolkata/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Kochi/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Thiruvananthapuram/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Kozhikode/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Madurai/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Coimbatore/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Visakhapatnam/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Vijayawada/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Mangalore/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Puducherry/feeder/default.rss
+      - https://www.thehindu.com/news/cities/Tiruchirapalli/feeder/default.rss
+    sitemaps:
+      - https://www.thehindu.com/sitemap/googlenews/all/all.xml
+    # No keyword pages: /topic/ redirects to the home page and /search/ is disallowed by robots.txt.
+
+  - name: Times of India
+    enabled: true
+    domain: timesofindia.indiatimes.com
+    rss:
+      - https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms   # India
+    sitemaps:   # indexes of today's/yesterday's articles, with titles
+      - https://timesofindia.indiatimes.com/sitemap/today
+      - https://timesofindia.indiatimes.com/sitemap/yesterday
+    archive_sitemaps:   # weekly chunks of 10,000 URLs (no titles; matched on URL slug)
+      - https://timesofindia.indiatimes.com/staticsitemap/toi/news/sitemap-index.xml
+    keyword_pages:   # no server-side pagination
+      - https://timesofindia.indiatimes.com/topic/{slug}/news
+    article_pattern: '/articleshow/\d+\.cms$'
+
+  - name: The Indian Express
+    enabled: true
+    domain: indianexpress.com
+    rss:
+      - https://indianexpress.com/section/india/feed/
+      - https://indianexpress.com/section/lifestyle/health/feed/
+    sitemaps:
+      - https://indianexpress.com/news-sitemap.xml
+    archive_sitemaps:   # one sitemap per day
+      - https://indianexpress.com/sitemap.xml
+    archive_child_pattern: 'yyyy=\d{4}&mm=\d+&dd=\d+'
+    keyword_pages:   # no server-side pagination
+      - https://indianexpress.com/about/{slug}/
+    article_pattern: '^/article/.+-\d+$'
+
+  - name: Hindustan Times
+    enabled: true
+    domain: www.hindustantimes.com
+    rss:
+      - https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml
+      - https://www.hindustantimes.com/feeds/rss/lifestyle/health/rssfeed.xml
+    sitemaps:
+      - https://www.hindustantimes.com/sitemap/news.xml
+    archive_sitemaps:   # one sitemap per month
+      - https://www.hindustantimes.com/sitemap/index.xml
+    archive_child_pattern: '/sitemap/[a-z]+-\d{4}\.xml$'
+    keyword_pages:
+      - https://www.hindustantimes.com/topic/{slug}/news/page-{page}
+    article_pattern: '-\d{15}\.html$'
+
+  - name: NDTV
+    enabled: true
+    domain: www.ndtv.com
+    rss:   # sitemaps and topic pages return 403; "latest" holds ~1 day, so 30-min polling sees every article
+      - https://feeds.feedburner.com/ndtvnews-latest
+      - https://feeds.feedburner.com/ndtvnews-india-news
+      - https://feeds.feedburner.com/ndtvnews-cities-news
+      - https://feeds.feedburner.com/ndtvnews-south
+      - https://feeds.feedburner.com/ndtvnews-top-stories
+
+  - name: India Today
+    enabled: true
+    domain: www.indiatoday.in
+    rss:
+      - https://www.indiatoday.in/rss/home      # ~130 items
+      - https://www.indiatoday.in/rss/1206514   # India
+    sitemaps:
+      - https://www.indiatoday.in/news-it-sitemap.xml
+    # No keyword pages (/topic/ redirects to a topic index) and no archive sitemap.
+
+  - name: News18
+    enabled: true
+    domain: www.news18.com
+    rss:
+      - https://www.news18.com/rss/india.xml
+    sitemaps:
+      - https://www.news18.com/commonfeeds/v1/eng/sitemap/google-news.xml
+      - https://www.news18.com/commonfeeds/v1/eng/sitemap/google-news/yesterday.xml
+    keyword_pages:
+      - https://www.news18.com/topics/{slug}/page-{page}/
+    article_pattern: '-\d+\.html$'
+
+  - name: ThePrint
+    enabled: true
+    domain: theprint.in
+    rss:
+      - https://theprint.in/category/health/feed/
+    sitemaps:
+      - https://theprint.in/googlenews.xml
+    archive_sitemaps:   # WordPress post sitemaps (1,000 posts each)
+      - https://theprint.in/sitemap_index.xml
+    archive_child_pattern: '/post-sitemap\d*\.xml$'
+    keyword_pages:
+      - https://theprint.in/page/{page}/?s={query}
+    article_pattern: '^/[^/]+/[^/]+/\d+$'
+
+  - name: Scroll
+    enabled: true
+    domain: scroll.in
+    rss:
+      - https://feeds.feedburner.com/ScrollinArticles.rss
+    sitemaps:
+      - https://scroll.in/sitemap/news-sitemap.xml
+    keyword_pages:   # no server-side pagination
+      - https://scroll.in/topic/{slug}
+    article_pattern: '^/(article|latest)/\d+/'
+
+  - name: ET HealthWorld
+    enabled: true
+    domain: health.economictimes.indiatimes.com
+    rss:
+      - https://health.economictimes.indiatimes.com/rss/topstories
+    sitemaps:
+      - https://health.economictimes.indiatimes.com/jcms-sitemaps/health/48hours/sitemap-48hours.xml
+    archive_sitemaps:   # one sitemap per month
+      - https://health.economictimes.indiatimes.com/jcms-sitemaps/health/monthly/sitemap-index.xml
+    keyword_pages:
+      - https://health.economictimes.indiatimes.com/tag/{slug}/{page}
+    article_pattern: '^/news/[^/]+/[^/]+/\d+$'

@@ -1,0 +1,53 @@
+﻿# Diseases to monitor. Edit this file to add, remove or change diseases; no code changes needed.
+#
+#   keywords      Words/phrases that mark an article as being about the disease. Matched as whole
+#                 words, case-insensitive, in the headline, summary, sitemap keywords and article text.
+#   search_terms  Terms used to open each site's topic/search page (sources.yaml -> keyword_pages).
+#                 Keep these short and broad. Defaults to the first keyword if omitted.
+
+diseases:
+  - name: Dengue
+    keywords: ["dengue", "dengue fever", "dengue cases", "dengue outbreak"]
+    search_terms: ["dengue"]
+
+  - name: Malaria
+    keywords: ["malaria", "malaria cases", "plasmodium", "falciparum", "vivax"]
+    search_terms: ["malaria"]
+
+  - name: Chikungunya
+    keywords: ["chikungunya", "chikungunya cases"]
+    search_terms: ["chikungunya"]
+
+  - name: Cholera / Acute Diarrhoeal Disease
+    keywords: ["cholera", "acute diarrhoeal disease", "diarrhoea outbreak", "diarrhea outbreak", "gastroenteritis outbreak"]
+    search_terms: ["cholera", "diarrhoea"]
+
+  - name: Typhoid
+    keywords: ["typhoid", "enteric fever"]
+    search_terms: ["typhoid"]
+
+  - name: Hepatitis A / E (Jaundice)
+    keywords: ["hepatitis A", "hepatitis E", "jaundice outbreak", "jaundice cases", "viral hepatitis"]
+    search_terms: ["hepatitis", "jaundice"]
+
+  - name: Japanese Encephalitis / AES
+    keywords: ["Japanese encephalitis", "acute encephalitis syndrome", "AES cases", "brain fever", "chandipura"]
+    search_terms: ["japanese encephalitis", "encephalitis", "chandipura"]
+
+  - name: Nipah
+    keywords: ["nipah", "nipah virus"]
+    search_terms: ["nipah"]
+
+  - name: Influenza (H1N1 / H3N2 / Bird flu)
+    keywords: ["swine flu", "H1N1", "H3N2", "H5N1", "bird flu", "avian influenza", "influenza outbreak"]
+    search_terms: ["swine flu", "h1n1", "bird flu"]
+
+  - name: Measles
+    keywords: ["measles", "measles outbreak", "rubella"]
+    search_terms: ["measles"]
+
+settings:
+  lookback_days: 45              # first run (backfill) collects this far back; older articles are ignored
+  refresh_interval_minutes: 30   # scheduler interval for incremental runs
+  backfill_max_pages: 10         # keyword-page pages read per search term during backfill
+  country: India
