@@ -5,9 +5,10 @@ import logging
 import re
 from datetime import datetime
 
+import requests
 import trafilatura
 
-from .fetch import allowed_by_robots, get
+from .fetch import RobotsUnavailable, allowed_by_robots, get
 from .urls import canonicalize_url
 
 log = logging.getLogger(__name__)
@@ -25,18 +26,36 @@ def content_fingerprint(text: str | None) -> str | None:
 
 
 def extract_article(url: str) -> dict:
-    """Return extraction_status ("ok", "no_text", "blocked", "failed") plus whatever was found:
-    article_text, canonical_url, title, published_at, error."""
-    if not allowed_by_robots(url):
-        return {"extraction_status": "blocked", "error": "disallowed by robots.txt"}
+    """Download and extract one article.
+
+    extraction_status:
+        ok           text extracted
+        no_text      page downloaded but no usable article text
+        blocked      robots.txt disallows the page (permanent)
+        unavailable  the site refused or does not have the page (HTTP 4xx, permanent)
+        failed       temporary problem (network, timeout, 429/5xx, robots.txt unreadable); retry later
+    Also returned when found: article_text, canonical_url, title, published_at, error.
+    """
+    try:
+        if not allowed_by_robots(url):
+            return {"extraction_status": "blocked", "error": "disallowed by robots.txt"}
+    except RobotsUnavailable as exc:
+        return {"extraction_status": "failed", "error": str(exc)}
     try:
         resp = get(url)
-        doc = trafilatura.bare_extraction(resp.content, url=resp.url, with_metadata=True,
-                                          include_comments=False, include_tables=False)
-    except Exception as exc:  # inaccessible page: keep the RSS excerpt and move on
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else None
+        permanent = code is not None and 400 <= code < 500 and code != 429
+        return {"extraction_status": "unavailable" if permanent else "failed", "error": f"HTTP {code}"}
+    except Exception as exc:
         return {"extraction_status": "failed", "error": f"{type(exc).__name__}: {exc}"[:500]}
 
     result = {"extraction_status": "no_text", "canonical_url": canonicalize_url(resp.url)}
+    try:
+        doc = trafilatura.bare_extraction(resp.content, url=resp.url, with_metadata=True,
+                                          include_comments=False, include_tables=False)
+    except Exception as exc:  # malformed page
+        return {**result, "error": f"extraction error: {type(exc).__name__}"}
     if doc is None:
         return result
     if doc.url:

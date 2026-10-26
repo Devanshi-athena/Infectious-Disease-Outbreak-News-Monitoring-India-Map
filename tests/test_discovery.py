@@ -83,6 +83,7 @@ def test_read_sitemap_index_reads_only_children_in_window():
       <sitemap><loc>https://www.example.in/sitemap/august-2026.xml</loc></sitemap>
       <sitemap><loc>https://www.example.in/sitemap.xml?yyyy=2026&amp;mm=09&amp;dd=20</loc></sitemap>
       <sitemap><loc>https://www.example.in/post-sitemap9.xml</loc><lastmod>2026-09-01T00:00:00Z</lastmod></sitemap>
+      <sitemap><loc>https://www.example.in/sitemap/june-2002.xml</loc><lastmod>2026-10-25T00:00:00Z</lastmod></sitemap>
       <sitemap><loc>https://www.example.in/sitemap/topic-1.xml</loc></sitemap>
     </sitemapindex>"""
     fetched = []
@@ -93,6 +94,7 @@ def test_read_sitemap_index_reads_only_children_in_window():
 
     with patch.object(discovery, "_fetch_allowed", side_effect=fake_fetch):
         discovery.read_sitemap("https://www.example.in/index.xml", CUTOFF, child_pattern=r"(-\d{4}\.xml|yyyy=|post-)")
+    # june-2002 has a fresh <lastmod> but its period lies before the cutoff -> not downloaded
     assert fetched[1:] == ["https://www.example.in/sitemap/october-2026.xml",
                            "https://www.example.in/sitemap.xml?yyyy=2026&mm=09&dd=20"]
 
@@ -147,20 +149,41 @@ def test_discover_modes_failures_and_filters():
     sitemap_items = [{"url": "https://www.example.in/a.html"}, {"url": "https://other.com/b.html"},
                      {"url": "https://www.example.in/topics/dengue"}]
 
-    def run(backfill):
+    def run(deep):
         with patch.object(discovery, "read_rss", side_effect=ConnectionError("down")), \
              patch.object(discovery, "read_sitemap", return_value=[dict(i) for i in sitemap_items]) as sitemap, \
              patch.object(discovery, "read_keyword_page", side_effect=_http_error(404)):
-            result = discovery.discover(source, [Disease("Dengue", ["dengue"])], backfill=backfill,
-                                        cutoff=CUTOFF, max_pages=5, known_urls=set())
+            result = discovery.discover(source, [Disease("Dengue", ["dengue"])], cutoff=CUTOFF, deep=deep,
+                                        max_pages=5, known_urls=set())
         return result, sitemap.call_count
 
-    result, sitemap_calls = run(backfill=False)
-    assert sitemap_calls == 1 and result.listings_ok == 1 and len(result.errors) == 1  # 404 keyword page: no error
+    result, sitemap_calls = run(deep={})
+    assert sitemap_calls == 1  # archive not planned
+    assert [(l["kind"], l["ok"]) for l in result.listings] == [("rss", False), ("sitemap", True), ("keyword_page", True)]
+    assert len(result.errors) == 1  # a missing (404) keyword page is not an error
     assert [(c["url"], c["listing_url"]) for c in result.candidates] == [
         ("https://www.example.in/a.html", "https://www.example.in/news.xml")]  # other domain + topic page dropped
-    _, sitemap_calls = run(backfill=True)
-    assert sitemap_calls == 2  # archive read too
+    result, sitemap_calls = run(deep={"https://www.example.in/index.xml": CUTOFF})
+    assert sitemap_calls == 2 and [l["deep"] for l in result.listings if l["kind"] == "archive"] == [True]
+
+
+def test_sitemap_index_keeps_other_files_when_one_fails():
+    index = """<sitemapindex><sitemap><loc>https://www.example.in/s1.xml</loc></sitemap>
+      <sitemap><loc>https://www.example.in/s2.xml</loc></sitemap><sitemap></sitemap></sitemapindex>"""
+    urlset = "<urlset><url><loc>https://www.example.in/a-1.html</loc></url></urlset>"
+
+    def fake_fetch(url):
+        if url.endswith("s2.xml"):
+            raise ConnectionError("down")
+        return _resp(index if url.endswith("index.xml") else urlset)
+
+    with patch.object(discovery, "_fetch_allowed", side_effect=fake_fetch):
+        try:
+            discovery.read_sitemap("https://www.example.in/index.xml", CUTOFF)
+            assert False, "expected PartialListing"
+        except discovery.PartialListing as exc:
+            assert [i["url"] for i in exc.items] == ["https://www.example.in/a-1.html"]
+            assert "s2.xml" in str(exc)
 
 
 def test_config_files_load():

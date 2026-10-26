@@ -1,0 +1,211 @@
+# Cue words for relevance (B4) and event classification (B5). Edit to tune; no code changes needed.
+# Re-classify existing articles after editing:  python -m outbreak_monitor.relevance --all
+#
+# Each entry is a word or phrase, matched case-insensitively as whole words.
+# A trailing * matches any ending, e.g. "hospitali*" matches hospitalised/hospitalized/hospitalisation.
+# Cues are looked for in the sentences that mention a disease (and in the headline).
+# Case counts like "40 new cases", "2,500 chickens" or "tally rises to 70" are detected in code.
+
+# Signs that cases, deaths or an outbreak are being reported.
+event:
+  - cases
+  - positive case*
+  - confirmed
+  - detected
+  - die
+  - outbreak*
+  - cluster*
+  - spike*
+  - surge*
+  - upsurge
+  - epidemic
+  - hotspot*
+  - tally
+  - toll
+  - death*
+  - died
+  - dies
+  - succumb*
+  - killed
+  - fatalit*
+  - tested positive
+  - test positive
+  - cases rise
+  - cases rising
+  - rise in cases
+  - increase in cases
+  - cases spread
+  - spreading
+  - hits
+  - grips
+
+# Signs of a public-health response to disease in an area.
+response:
+  - fogging
+  - anti-mosquito
+  - anti-larva*
+  - larvicid*
+  - surveillance
+  - rapid response team
+  - containment
+  - culling
+  - cull*
+  - alert
+  - advisory
+  - drive
+  - campaign
+  - door-to-door
+  - fever survey
+  - health camp*
+  - medical camp*
+  - vigilance
+  - preventive measures
+  - prevention measures
+  - prevention
+  - preparedness
+  - ward set up
+  - isolation ward*
+  - special ward*
+  - control measures
+  - source reduction
+  - mosquito breeding
+  - notice*
+
+# Not yet confirmed.
+suspected:
+  - suspected
+  - suspect
+  - probable
+  - possible case*
+  - samples sent
+  - samples collected
+  - awaiting results
+  - under observation
+  - unconfirmed
+  - feared
+
+# Overrides "suspected" when present.
+confirmed:
+  - confirmed
+  - tested positive
+  - test positive
+  - lab-confirmed
+  - laboratory confirmed
+
+# Research, trials and medical science (checked in the headline).
+research:
+  - study
+  - studies
+  - researcher*
+  - scientist*
+  - trial*
+  - vaccine*
+  - vax
+  - drug*
+  - journal
+  - findings
+  - discover*
+  - develop*
+  - genom*
+  - genetic*
+  - climate change
+  - strain*
+  - resistance
+  - pilot
+
+# Explainers, tips and general awareness (checked in the headline).
+awareness:
+  - tips
+  - symptoms
+  - signs
+  - how
+  - ways to
+  - what is
+  - what are
+  - why
+  - explains
+  - explained
+  - explainer
+  - doctor reveals
+  - doctor shares
+  - doctor says
+  - myth*
+  - diet
+  - remed*
+  - guide
+  - should you
+  - things to know
+  - what to know
+  - should know
+  - know about
+  - all you need to know
+
+# Signs the report is about the past (checked in the headline only; a past year in the headline
+# also counts, unless the lead marks the report as current).
+historical:
+  - years ago
+  - months ago
+  - months on
+  - months after
+  - a year after
+  - years after
+  - decade ago
+  - decades ago
+  - in the past
+  - history
+  - historic outbreak
+  - anniversary
+  - recalled
+
+# Signs the report is about now (counter historical).
+current:
+  - today
+  - yesterday
+  - this week
+  - this month
+  - this year
+  - so far
+  - this season
+  - currently
+  - fresh
+  - new cases
+  - last 24 hours
+  - past 24 hours
+  - past week
+  - last week
+  - on monday
+  - on tuesday
+  - on wednesday
+  - on thursday
+  - on friday
+  - on saturday
+  - on sunday
+
+# Articles in these URL sections are treated as not relevant (sports results, celebrity news, opinion...).
+excluded_url_sections:
+  - opinion
+  - editorial
+  - editorials
+  - blogs
+  - blog
+  - columns
+  - sports
+  - sport
+  - cricket
+  - entertainment
+  - bollywood
+  - tv
+  - web-series
+  - astrology
+  - horoscope
+  - web-stories
+  - photos
+  - videos
+  - movies
+  - music
+  - fashion
+  - travel
+  - technology
+  - tech
+  - business
+  - markets

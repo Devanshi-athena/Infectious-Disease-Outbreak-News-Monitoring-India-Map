@@ -132,19 +132,17 @@ sources:
       - https://www.news18.com/topics/{slug}/page-{page}/
     article_pattern: '-\d+\.html$'
 
-  - name: ThePrint
+  - name: Deccan Chronicle
     enabled: true
-    domain: theprint.in
-    rss:
-      - https://theprint.in/category/health/feed/
+    domain: www.deccanchronicle.com
+    rss:   # ~500 items, about 2 days
+      - https://www.deccanchronicle.com/rss_feed/
     sitemaps:
-      - https://theprint.in/googlenews.xml
-    archive_sitemaps:   # WordPress post sitemaps (1,000 posts each)
-      - https://theprint.in/sitemap_index.xml
-    archive_child_pattern: '/post-sitemap\d*\.xml$'
-    keyword_pages:
-      - https://theprint.in/page/{page}/?s={query}
-    article_pattern: '^/[^/]+/[^/]+/\d+$'
+      - https://www.deccanchronicle.com/news-sitemap-daily.xml
+    # No archive sitemap (the daily sitemaps cover only ~2 days).
+    keyword_pages:   # no server-side pagination; unknown tags return 410
+      - https://www.deccanchronicle.com/tags/{slug}
+    article_pattern: '-\d{6,}$'
 
   - name: Scroll
     enabled: true
