@@ -29,6 +29,7 @@ import spacy
 
 from .config import CONFIG_DIR, Disease, _read_yaml
 from .matcher import compile_phrases
+from .processing import split_paragraphs
 
 CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current")
 LEAD_SENTENCES = 3
@@ -61,8 +62,8 @@ def _sentences(text: str) -> list[str]:
     global _nlp
     if _nlp is None:
         _nlp = spacy.load("en_core_web_sm", exclude=["ner", "lemmatizer", "attribute_ruler", "tagger"])
-    paragraphs = [p.strip() for p in text[:MAX_TEXT_CHARS].split("\n") if p.strip()]
-    return [s.text.strip() for doc in _nlp.pipe(paragraphs) for s in doc.sents if s.text.strip()]
+    return [s.text.strip() for doc in _nlp.pipe(split_paragraphs(text, MAX_TEXT_CHARS))
+            for s in doc.sents if s.text.strip()]
 
 
 def load_relevance_config(path=CONFIG_DIR / "relevance.yaml") -> dict:

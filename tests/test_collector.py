@@ -257,11 +257,14 @@ def test_config_change_rechecks_rejected_links():
     pages = {"https://site.in/k": ok("https://site.in/k", "Officials reviewed jaundice outbreak cases. " * 20)}
     factory = get_session_factory("sqlite://")
     narrow = DiseaseConfig([Disease("Dengue", ["dengue"])], Settings(lookback_days=30))
-    with patch.object(collector, "config_hash", return_value="v1"):
-        with patch.object(collector, "discover", lambda s, d, **kw: Discovery(candidates=[dict(c) for c in candidates])), \
-             patch.object(collector, "extract_article", lambda url: pages[url]):
-            first = collector.collect(factory, [SITE], narrow)
+    discover = lambda s, d, **kw: Discovery(candidates=[dict(c) for c in candidates])
+    with patch.object(collector, "config_hash", return_value="k1" * 16 + "a1" * 16), \
+         patch.object(collector, "discover", discover), patch.object(collector, "extract_article", lambda url: pages[url]):
+        first = collector.collect(factory, [SITE], narrow)
     assert first["no_keyword"] == 1
-    with patch.object(collector, "config_hash", return_value="v2"):  # hepatitis keywords added
+    with patch.object(collector, "config_hash", return_value="k1" * 16 + "a2" * 16):  # e.g. locations.yaml changed
+        _, _, fetched = run(candidates, pages, factory)
+    assert fetched == []  # rejected links are only re-checked when keywords change
+    with patch.object(collector, "config_hash", return_value="k2" * 16 + "a2" * 16):  # hepatitis keywords added
         second, _, fetched = run(candidates, pages, factory)
     assert fetched == ["https://site.in/k"] and second["new"] == 1

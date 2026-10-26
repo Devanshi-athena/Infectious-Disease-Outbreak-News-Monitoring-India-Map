@@ -6,7 +6,7 @@ All datetimes are stored as naive UTC.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, create_engine, inspect, select, text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "outbreaks.db"
@@ -61,14 +61,20 @@ class Article(Base):
     # Manual review by a user; never changed by the classifier
     relevance_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/relevant/irrelevant
 
-    # Location (next phase)
-    location_text: Mapped[str | None] = mapped_column(Text)  # original location phrase
+    # Outbreak location (location.py)
+    country: Mapped[str | None] = mapped_column(String(100), index=True)  # "India", a foreign country, or empty
     state: Mapped[str | None] = mapped_column(String(100), index=True)
     district: Mapped[str | None] = mapped_column(String(100))
     locality: Mapped[str | None] = mapped_column(String(200))
-    latitude: Mapped[float | None] = mapped_column(Float)
+    latitude: Mapped[float | None] = mapped_column(Float)    # of the most specific supported level
     longitude: Mapped[float | None] = mapped_column(Float)
-    location_confidence: Mapped[str | None] = mapped_column(String(20))
+    location_level: Mapped[str | None] = mapped_column(String(20))       # state/district/locality/country
+    location_text: Mapped[str | None] = mapped_column(Text)              # the article's own words for the place
+    location_confidence: Mapped[str | None] = mapped_column(String(20))  # high/medium/low/none
+    location_review: Mapped[bool | None] = mapped_column(Boolean)        # needs a person to check
+    location_source: Mapped[str | None] = mapped_column(String(20))      # reference / nominatim
+    location_reasons: Mapped[list | None] = mapped_column(JSON)
+    location_candidates: Mapped[list | None] = mapped_column(JSON)       # every Indian place considered
 
 
 class SeenLink(Base):
@@ -81,6 +87,16 @@ class SeenLink(Base):
     outcome: Mapped[str] = mapped_column(String(20))  # no_keyword/too_old/duplicate/fetch_failed
     attempts: Mapped[int | None] = mapped_column(Integer, default=1)
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class GeocodeCache(Base):
+    """Nominatim answers, so each place is looked up once ({} = looked up, nothing found)."""
+
+    __tablename__ = "geocode_cache"
+
+    query: Mapped[str] = mapped_column(String(500), primary_key=True)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class ListingStatus(Base):

@@ -1,0 +1,51 @@
+# Location extraction settings. Edit without code changes; stored articles are re-processed
+# automatically on the next run.
+#
+# Place names, districts and states come from reference/india_places.csv (GeoNames, CC BY 4.0).
+# Add spellings that the reference data lacks here.
+
+# Abbreviations used in headlines. Matched only exactly as written (case-sensitive), so "UP" matches
+# but "up" does not.
+abbreviations:
+  AP: Andhra Pradesh
+  UP: Uttar Pradesh
+  MP: Madhya Pradesh
+  TN: Tamil Nadu
+  HP: Himachal Pradesh
+  WB: West Bengal
+  J&K: Jammu and Kashmir
+  Maha: Maharashtra
+  Raj: Rajasthan
+  NCR: Delhi
+  Guj: Gujarat
+  K'taka: Karnataka
+
+# Extra spellings (case-insensitive) -> reference place name. If the name exists in several states,
+# give "Name, State".
+aliases:
+  Bengal: West Bengal
+  Andhra: Andhra Pradesh
+  Keralam: Kerala
+  Vizag: Visakhapatnam, Andhra Pradesh
+  Bombay: Mumbai, Maharashtra
+  Madras: Chennai, Tamil Nadu
+  SAS Nagar: Ajitgarh, Punjab
+  G'nagar: Gandhinagar, Gujarat
+
+# Names shown for places whose reference name is outdated or an unusual spelling.
+display_names:
+  Ajitgarh: SAS Nagar (Mohali)
+  Ahmadabad: Ahmedabad
+  Haora: Howrah
+  Thoothukkudi: Thoothukudi
+  Bangalore Urban: Bengaluru Urban
+  Bangalore Rural: Bengaluru Rural
+
+# Geocoding of villages/localities that are not in the reference data, using OpenStreetMap
+# Nominatim (https://operations.osmfoundation.org/policies/nominatim/): at most one request per
+# second, an identifying User-Agent, results cached in the database, India only, and the result
+# must lie in the state the article names.
+geocoding:
+  enabled: true
+  user_agent: "OutbreakMonitorPrototype/0.1 (+https://github.com/Devanshi-athena/Infectious-Disease-Outbreak-News-Monitoring-India-Map)"
+  min_delay_seconds: 1.1

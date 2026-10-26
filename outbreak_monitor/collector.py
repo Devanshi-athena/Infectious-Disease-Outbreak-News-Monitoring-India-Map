@@ -20,7 +20,8 @@ One run:
  4. Store (as each source finishes): clean the headline; tag diseases from headline and article
     text only, recording the exact keywords; reject old items and duplicates (canonical URL,
     content fingerprint, same-source headline with the same figures); link the same story from
-    other sources (story_id); classify relevance (relevance.py); save. A temporarily failed
+    other sources (story_id); classify relevance (relevance.py); find the outbreak location
+    (location.py; Nominatim geocoding only for relevant articles); save. A temporarily failed
     download is retried in later runs (up to MAX_FETCH_ATTEMPTS) instead of being rejected.
 """
 
@@ -40,6 +41,9 @@ from .db import (Article, CollectionRun, ListingStatus, SeenLink, get_session_fa
                  utcnow)
 from .discovery import discover, keyword_page_templates
 from .extractor import content_fingerprint, extract_article
+from .gazetteer import FOREIGN_FILE, INDIA_FILE
+from .location import LocationResolver, build_resolver
+from .location import apply as apply_location
 from .logs import setup_logging
 from .matcher import KeywordMatcher
 from .processing import STORY_WINDOW, StoryIndex, clean_headline, tag_content
@@ -52,15 +56,21 @@ METADATA_FIELDS = ("headline", "published_at", "excerpt", "meta_keywords")
 MAX_FETCH_ATTEMPTS = 3                 # runs in which a temporarily failing article download is tried
 CATCH_UP_AFTER = timedelta(hours=36)   # news sitemaps cover ~48 h; after a longer gap, read archives
 CATCH_UP_MARGIN = timedelta(hours=12)  # overlap with the last successful run
-CONFIG_FILES = ("diseases.yaml", "relevance.yaml")
+KEYWORD_FILES = (CONFIG_DIR / "diseases.yaml",)
+CONFIG_FILES = KEYWORD_FILES + (CONFIG_DIR / "relevance.yaml", CONFIG_DIR / "locations.yaml", INDIA_FILE, FOREIGN_FILE)
+
+
+def _digest(paths) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:32]
 
 
 def config_hash() -> str:
-    """Fingerprint of the keyword and relevance configuration."""
-    digest = hashlib.sha256()
-    for name in CONFIG_FILES:
-        digest.update((CONFIG_DIR / name).read_bytes())
-    return digest.hexdigest()
+    """Fingerprint of the configuration: first half keywords, second half everything that decides tags,
+    classification and location. A keyword change re-checks rejected links; any change re-processes."""
+    return _digest(KEYWORD_FILES) + _digest(CONFIG_FILES)
 
 
 def merge_candidates(candidates: list[dict]) -> list[dict]:
@@ -106,10 +116,13 @@ def plan_deep_reads(session, sources: list[Source], diseases, cutoff: datetime,
 class _Run:
     """State and statistics for one collection run (used from the main thread only)."""
 
-    def __init__(self, session, matcher: KeywordMatcher, classifier: RelevanceClassifier, cutoff: datetime):
+    def __init__(self, session, matcher: KeywordMatcher, classifier: RelevanceClassifier,
+                 locator: LocationResolver, keywords: dict[str, list[str]], cutoff: datetime):
         self.session = session
         self.matcher = matcher
         self.classifier = classifier
+        self.locator = locator
+        self.keywords = keywords
         self.cutoff = cutoff
         retry = (SeenLink.outcome == "fetch_failed") & (SeenLink.attempts < MAX_FETCH_ATTEMPTS)
         self.failed_attempts = {u: n or 1 for u, n in session.execute(select(SeenLink.url, SeenLink.attempts).where(retry))}
@@ -227,6 +240,9 @@ class _Run:
             extraction_status=status, content_hash=fingerprint, disease_tags=tags, matched_keywords=keywords,
             story_id=story_id)
         apply(article, self.classifier.classify(headline, text or c.get("excerpt"), canonical, published))
+        apply_location(article, self.locator.locate_article(
+            headline, text or c.get("excerpt"), article.relevant_diseases or tags, self.keywords,
+            geocode=article.relevance == "relevant"))  # external geocoding only for relevant articles
         self.session.add(article)
         self.session.execute(delete(SeenLink).where(SeenLink.url == link))  # e.g. an earlier failed attempt
         try:
@@ -260,6 +276,8 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
     diseases, settings = disease_config.diseases, disease_config.settings
     matcher = KeywordMatcher(diseases)
     classifier = RelevanceClassifier(diseases, load_relevance_config())
+    locator = build_resolver(session_factory)
+    keywords = {d.name: d.keywords for d in diseases}
     current_hash = config_hash()
 
     with session_factory() as session:
@@ -275,13 +293,15 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
 
         has_articles = session.scalar(select(Article.article_id).limit(1)) is not None
         if previous_hash != current_hash and (previous_hash is not None or has_articles):
-            log.info("Keyword/relevance configuration changed: re-checking rejected links, re-processing articles")
-            session.execute(delete(SeenLink).where(SeenLink.outcome == "no_keyword"))
-            session.commit()
+            if (previous_hash or "")[:32] != current_hash[:32]:
+                log.info("Keywords changed: re-checking links rejected for having no keyword")
+                session.execute(delete(SeenLink).where(SeenLink.outcome == "no_keyword"))
+                session.commit()
             if has_articles:
-                reprocess(session, matcher, classifier)
+                log.info("Configuration changed: re-processing stored articles")
+                reprocess(session, matcher, classifier, locator, keywords)
 
-        run = _Run(session, matcher, classifier, cutoff)
+        run = _Run(session, matcher, classifier, locator, keywords, cutoff)
         try:
             # Each source goes through discovery -> extraction -> storage on its own, so a slow site
             # never holds up the others. Workers only talk to their own site (per-domain rate limit

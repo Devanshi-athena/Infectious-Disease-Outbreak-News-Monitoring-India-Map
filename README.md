@@ -2,6 +2,18 @@
 
 A news-based outbreak monitoring prototype. It is not an official surveillance or early-warning system. News coverage can be incomplete or delayed, and article counts do not measure disease incidence.
 
+## Project status
+
+| Area (requirements document) | Status |
+|---|---|
+| A. News collection and extraction | Done. The dashboard "Refresh" button comes with section D |
+| B. Configurable keywords and relevance | Done. The control for setting the review status comes with section D |
+| C. Location extraction and geocoding | Done |
+| D. Interactive India map and dashboard | Next |
+| Evaluation report, Docker, sample records | Later phases |
+
+Disease keywords and news sources are placeholders until the final lists are supplied. Both are configuration files (see [Configuration](#configuration)).
+
 ## Setup (Windows)
 
 ```powershell
@@ -16,8 +28,10 @@ pip install -r requirements.txt
 python -m outbreak_monitor.collector              # one collection run (manual refresh)
 python -m outbreak_monitor.collector --backfill   # force an in-depth read of every listing over lookback_days
 python -m outbreak_monitor.scheduler              # run now, then every refresh_interval_minutes (Ctrl+C to stop)
-python -m outbreak_monitor.reprocess              # re-tag and re-classify all stored articles (normally automatic)
+python -m outbreak_monitor.reprocess              # re-tag, re-classify and re-locate all stored articles (normally automatic)
+python -m outbreak_monitor.gazetteer              # rebuild reference/ place data from GeoNames (rarely needed)
 python -m evaluation.recall_check                 # coverage check against Bing News (evaluation only)
+python -m evaluation.location_eval                # location accuracy on the labelled sample
 pytest                                            # run tests
 ```
 
@@ -70,8 +84,8 @@ Each source is handled by its own worker, in parallel. Each worker only contacts
 - An error on one article is logged and the run continues.
 - SQLite waits up to 30 s for a lock held by another process.
 
-**Configuration changes.** The run records a fingerprint of `config/diseases.yaml` and `config/relevance.yaml`. If either file changes, the next run automatically:
-- re-tags and re-classifies every stored article (articles whose keywords were removed become `content_type = no_keyword`);
+**Configuration changes.** The run records a fingerprint of `config/diseases.yaml`, `config/relevance.yaml`, `config/locations.yaml` and the reference place data. If any of them changes, the next run automatically:
+- re-tags, re-classifies and re-locates every stored article (articles whose keywords were removed become `content_type = no_keyword`);
 - re-checks links that were rejected for having no keyword;
 - backfills new search terms.
 
@@ -110,6 +124,65 @@ The classifier also stores `relevant_diseases` (the diseases the event is about)
 
 **Outbreaks abroad** (e.g. US measles) are classified as outbreak reports. Keeping only events in India is handled by location extraction in the next phase.
 
+## Outbreak location
+
+Every article gets the most specific outbreak location **the article supports**: state/UT → district → locality, with coordinates for map display. The code is in `outbreak_monitor/location.py`.
+
+**Reference data** (`reference/`, built from [GeoNames](https://www.geonames.org), CC BY 4.0):
+- `india_places.csv`: all 36 states/UTs, 763 districts and 6,584 towns with 5,000+ people. Each has coordinates and alternative spellings (Gurgaon → Gurugram, Calicut → Kozhikode, Trichy → Tiruchirappalli).
+- `foreign_places.csv`: countries, capitals and first-level regions of all other countries.
+
+`config/locations.yaml` adds headline abbreviations ("TN", "UP", "J&K"), extra spellings, display names and the geocoding settings.
+
+**How a location is chosen**
+1. **Find place mentions.** spaCy named-entity recognition (GPE/LOC) runs first, then matching against the reference data.
+   - These are ignored: lower-case words, generic words ("East", "City"), and names that are part of a person's name.
+   - A small town found only by the dictionary must also look like a place ("in X", "X village", or tagged by spaCy). This stops headline words such as "Bed" matching a town.
+2. **Weigh each mention by where it appears:** headline 3; a sentence that mentions the article's disease 2 (3 in the first sentences); other lead sentences 1; elsewhere 0.5.
+3. **Leave out places that are not the outbreak location:**
+   - The **dateline** ("PUNE:", "Mumbai, Oct 20 (PTI) –") and **bylines** weigh 0. This is the publisher's or author's location.
+   - Places named right after a **laboratory or institute** ("samples sent to NIHSAD, Bhopal") are down-weighted.
+   - So are places inside a **hospital or college** name ("Coimbatore Medical College Hospital").
+   - The dateline does count when the article reports the outbreak there: the outbreak sentences name no other place and say "in the city" / "here", or keep naming that place.
+4. **Resolve ambiguous names** (Aurangabad: Bihar or Maharashtra), in this order:
+   - the state the article names;
+   - the higher administrative level (a district or state beats a same-name town elsewhere);
+   - a clearly larger population (flagged for review);
+   - otherwise unresolved.
+
+   A small-town match in a sentence that names a district in another state is treated as a local village. A foreign country, capital or region (Dhaka, Pennsylvania) beats a same-name small Indian town.
+5. **Decide the country.** If a foreign place named in the headline or outbreak sentences outweighs India, the article is `outside_india` (country = that country), and it is not mapped.
+6. **Choose the level.**
+   - **State:** the best-supported state.
+   - **District:** the headline's district, or the single district the outbreak sentences point to. When the headline names both a state and a district, a district written as the event's place ("outbreak in Mon's Tizit") or named first wins.
+   - **State-level instead of a district:** if the headline names only the state, or the outbreak sentences cover 3 or more districts.
+   - **Locality:** a town in that district named in the outbreak sentences, or a village looked up with Nominatim (below).
+7. **Coordinates** are those of the chosen level. A district-level report gets the district's coordinates; nothing more precise is invented.
+
+**Geocoding** (geopy + [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/), data © OpenStreetMap contributors, ODbL):
+- **When:** only for relevant articles, and only for a place named in the headline or outbreak sentences, written like a place ("in Kothrud", "Tizit village"), and missing from the reference data. Names with digits, codes, months or disease names are never sent.
+- **Query:** "name, district, state, India". The answer must be a settlement, neighbourhood or administrative area (not a street or clinic) **in the same state**.
+- **Usage policy:** at most 1 request per second, an identifying User-Agent, and every answer cached in the `geocode_cache` table, including "not found". Temporary failures are not cached.
+
+**Stored per article:**
+- `country`, `state`, `district`, `locality`, `latitude`, `longitude`
+- `location_level` (state / district / locality / country)
+- `location_text`: the article's own words for the place
+- `location_confidence` (high / medium / low)
+- `location_review` (true when a person should check it)
+- `location_source` (reference / nominatim)
+- `location_reasons`: why it was chosen
+- `location_candidates`: every Indian place considered, with its weight
+
+**Review flags** are set for:
+- an ambiguous name in the headline;
+- several states reported with similar weight;
+- a spelling-variant or population-based match;
+- a place not named in the headline or outbreak sentences;
+- no location found.
+
+**Accuracy** on the labelled sample in `evaluation/location_labels.csv` (60 relevant articles; AI-assisted labels, spot-checked by the project owner): **state/UT 95%, district level 92%**. Run `python -m evaluation.location_eval` to recompute.
+
 ## Configuration
 
 Changing any of these files needs no code changes. Edits take effect from the next run.
@@ -119,6 +192,7 @@ Changing any of these files needs no code changes. Edits take effect from the ne
   - `search_terms`: the terms used to open each site's topic or search page.
   - `settings`: `lookback_days`, `refresh_interval_minutes`, `backfill_max_pages` and `country`.
 - **`config/relevance.yaml`** holds the cue words for relevance and event classification, plus the URL sections to exclude.
+- **`config/locations.yaml`** holds place abbreviations and extra spellings, display names, and the geocoding settings (enable/disable, User-Agent, request delay).
 - **`config/sources.yaml`** lists each site with its `domain` and any of `rss`, `sitemaps`, `archive_sitemaps` (+ `archive_child_pattern`) and `keyword_pages` (+ `article_pattern`). To pause a source, set `enabled: false`. A newly added source is backfilled automatically. The file's header comments explain each field.
 
 ## Sources and collection methods
@@ -147,11 +221,37 @@ There are four collection methods. robots.txt is checked before every request.
 
 The collector does not log in, bypass paywalls or crawl whole sites.
 
+## Sources, usage and compliance
+
+**What the collector does with publishers' sites:**
+- It reads only what each site publishes for automated reading (RSS feeds, sitemaps listed in its robots.txt) or as public pages (topic, tag and search pages).
+- It checks robots.txt before every request (re-read daily).
+- It makes at most one request per second per site and identifies itself with a descriptive User-Agent.
+- It retries temporary errors with backoff and never retries 403/404.
+- It does not log in, bypass paywalls, or work around blocks. Sites or sections that refuse automated access are left out; see the notes in the sources table.
+
+**What is stored and shown:**
+- The full article text is stored only for internal processing (keyword matching, classification and location).
+- It is not republished. The dashboard will show the headline, source, date and short metadata, and link to the original article.
+
+**Terms of use:** each publisher's terms of use and copyright policy have **not yet been formally reviewed**. Before production use or wider sharing, the project owner should confirm for each source in `config/sources.yaml` that automated access and internal text processing are permitted, and disable any source where they are not.
+
+**External services and data:**
+
+| Dependency | Used for | Terms / attribution |
+|---|---|---|
+| Publishers' RSS feeds, sitemaps and pages | Article collection | Each publisher's terms (see above) |
+| [GeoNames](https://www.geonames.org) | `reference/` place data (built once, kept in the repo) | CC BY 4.0. Attribution: GeoNames |
+| [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) via geopy | Locating villages and neighbourhoods | Usage policy: max 1 request/second, identifying User-Agent, results cached. Data © OpenStreetMap contributors, ODbL |
+| Bing News RSS | **Evaluation only** (`evaluation/recall_check.py`), never for collection | Microsoft/Bing terms |
+| Map tiles | Dashboard map (next phase) | To be documented with the dashboard |
+
 ## Database (SQLite, via SQLAlchemy)
 
 | Table | Contents |
 |---|---|
-| `articles` | headline, source, canonical and listing URLs, collection method, publication time (+ `date_source`) and collection time, excerpt, article text, extraction status, content hash, `disease_tags` and `matched_keywords`, classification (`relevance`, `content_type`, `event_status`, `relevant_diseases`, `relevance_reasons`), `story_id`, manual review (`relevance_status`) and location columns (filled in the next phase) |
+| `articles` | headline, source, canonical and listing URLs, collection method, publication time (+ `date_source`) and collection time, excerpt, article text, extraction status, content hash, `disease_tags` and `matched_keywords`, classification (`relevance`, `content_type`, `event_status`, `relevant_diseases`, `relevance_reasons`), `story_id`, manual review (`relevance_status`), and location (`country`, `state`, `district`, `locality`, `latitude`, `longitude`, `location_level`, `location_text`, `location_confidence`, `location_review`, `location_source`, `location_reasons`, `location_candidates`) |
+| `geocode_cache` | Nominatim answers per query ({} = not found), so each place is looked up once |
 | `seen_links` | links checked but not stored: `no_keyword`, `too_old`, `duplicate`, or `fetch_failed` (with `attempts`, retried up to 3 times) |
 | `listing_status` | per listing: last success, last in-depth read, last error |
 | `collection_runs` | one row per run: mode, times, status, config fingerprint, statistics and errors |
@@ -165,11 +265,13 @@ New columns are added to an existing database automatically.
   - `extractor.py` gets article text
   - `processing.py` cleans headlines, tags keywords and matches stories
   - `relevance.py` classifies articles
+  - `gazetteer.py` builds and loads the reference place data; `location.py` finds the outbreak location
   - `collector.py` runs the pipeline
   - `reprocess.py` re-applies the configuration to stored articles
   - `scheduler.py` runs the pipeline on a schedule
-- `config/`: diseases and keywords, relevance cues, and news sources (YAML)
-- `evaluation/`: coverage check (`recall_check.py`)
+- `config/`: diseases and keywords, relevance cues, locations, and news sources (YAML)
+- `reference/`: India and foreign place reference data (from GeoNames)
+- `evaluation/`: coverage check (`recall_check.py`), location accuracy (`location_eval.py` + `location_labels.csv`)
 - `tests/`: pytest tests
 - `data/`: SQLite database and logs (not committed)
 
@@ -179,3 +281,5 @@ New columns are added to an existing database automatically.
 - NDTV, The Hindu, India Today and Deccan Chronicle have no archive sitemaps (and the first three no keyword pages) we can use. Their backfill and catch-up only reach back as far as their RSS feeds and 48-hour sitemaps. Continuous scheduled runs cover them fully.
 - Archive sitemaps have no headlines. During backfill, an article from those sites is found only if a keyword appears in its URL slug, or if it is on a keyword page.
 - `refresh_interval_minutes` is read when the scheduler starts, so changing it requires a restart.
+- Location rules are heuristics. National or regional pieces (e.g. a WHO statement issued in New Delhi) can get a state. A headline about a whole state whose body describes one district stays state-level. Where a patient lives vs where they were treated is only partly handled. Review flags and manual review cover these cases.
+- The small spaCy model sometimes misses or mislabels place names. The reference-data match and review flags compensate, but a village that neither recognises is not found.

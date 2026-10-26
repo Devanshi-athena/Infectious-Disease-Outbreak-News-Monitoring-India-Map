@@ -29,6 +29,22 @@ def clean_headline(title: str, source_name: str) -> str:
         headline = stripped
 
 
+def split_paragraphs(text: str | None, max_chars: int = 20_000) -> list[str]:
+    """Article text as paragraphs. Extracted text often breaks a paragraph wherever the page had a link
+    ("Bhopal:" / "H1N1" / "situation remains..."); such fragments are joined back: a short piece without
+    closing punctuation, or a line that starts in lower case or with ':' continues the previous one."""
+    paragraphs: list[str] = []
+    for line in (p.strip() for p in (text or "")[:max_chars].split("\n")):
+        if not line:
+            continue
+        if paragraphs and (line[:1] in ":-–—,;)" or line[:1].islower()
+                           or (len(paragraphs[-1].split()) < 6 and not paragraphs[-1].endswith((".", "!", "?", "”", '"')))):
+            paragraphs[-1] = f"{paragraphs[-1]} {line}"
+        else:
+            paragraphs.append(line)
+    return paragraphs
+
+
 def normalise_headline(headline: str) -> str:
     return " ".join(re.findall(r"\w+", headline.lower()))
 
