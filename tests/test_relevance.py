@@ -85,6 +85,19 @@ def test_research_and_awareness_are_irrelevant(classify, headline, content_type)
     assert (r.relevance, r.content_type) == ("irrelevant", content_type)
 
 
+def test_secondary_disease_needs_its_own_outbreak_sentences(classify):
+    r = classify("Dengue cases rise to 72 in Nagpur",
+                 "Dengue cases rose to 72 this month. Doctors said malaria was also seen in 3 cases. "
+                 "Dengue wards are full. Malaria testing continues. Malaria awareness drives are planned.")
+    assert r.relevant_diseases == ["Dengue"]
+    r = classify("Dengue and malaria cases surge in Delhi",
+                 "Dengue cases rose to 300. Malaria cases rose to 120.")
+    assert r.relevant_diseases == ["Dengue", "Malaria"]
+    r = classify("Dengue cases rise to 72 in Nagpur",
+                 "Dengue cases rose to 72. Malaria cases also rose to 40. Malaria deaths reached 2.")
+    assert r.relevant_diseases == ["Dengue", "Malaria"]   # two outbreak sentences of its own
+
+
 def test_passing_mention(classify):
     r = classify("Athlete wins gold at Asian Games after tough year",
                  "She trained for months. Earlier she had typhoid. She then won the final.")
@@ -105,3 +118,23 @@ def test_new_columns_added_to_existing_database(tmp_path):
     db.get_session_factory(f"sqlite:///{path}")
     columns = {c["name"] for c in inspect(engine).get_columns("articles")}
     assert {"relevance", "content_type", "relevant_diseases", "relevance_reasons"} <= columns
+
+
+def test_crime_headline_is_not_an_outbreak():
+    clf = RelevanceClassifier([Disease("Acute Diarrhoeal Disease", ["food poisoning"])], load_relevance_config())
+    body = "Five members of a family died. Food poisoning was suspected. Police said food poisoning was ruled out."
+    r = clf.classify("'Not food poisoning; it is murder': twist in family deaths", body, "https://a.in/x", PUBLISHED)
+    assert (r.relevance, r.content_type) == ("irrelevant", "other")
+    r = clf.classify("75 BSF personnel hospitalised over suspected food poisoning",
+                     "75 personnel were hospitalised after food poisoning at the camp.", "https://a.in/y", PUBLISHED)
+    assert r.relevance == "relevant"
+
+
+def test_jaundice_and_plague_need_outbreak_phrasing():
+    from outbreak_monitor.config import load_disease_config
+    from outbreak_monitor.matcher import KeywordMatcher
+    m = KeywordMatcher(load_disease_config().diseases)
+    assert m.match("Newborn jaundice: when to see a doctor") == []
+    assert m.match("Town plagued by potholes") == []
+    assert m.match("3 jaundice deaths in Nainital") == ["Hepatitis A / E"]
+    assert m.match("Bubonic plague case confirmed") == ["Other zoonotic outbreaks"]

@@ -66,6 +66,13 @@ def test_dateline_used_when_outbreak_sentences_refer_to_it(resolver):
     assert any("dateline place" in reason for reason in r.reasons)
 
 
+def test_dateline_used_when_only_its_own_state_is_named(resolver):
+    r = locate(resolver, "Dengue situation remains under watch",
+               "Bhopal: The dengue situation remains under watch. Dengue cases in Madhya Pradesh are stable. "
+               "Health officials in Bhopal reported 3 dengue cases.")
+    assert (r.state, r.district) == ("Madhya Pradesh", "Bhopal")
+
+
 def test_headline_first_place_decides_between_state_and_district(resolver):
     r = locate(resolver, "Haryana dengue cases jump 58% in 20 days; Gurgaon sees highest tally",
                "Haryana's dengue tally rose to 503 cases.")

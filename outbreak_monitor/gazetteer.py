@@ -23,6 +23,10 @@ ROOT = Path(__file__).resolve().parent.parent
 REFERENCE_DIR = ROOT / "reference"
 INDIA_FILE = REFERENCE_DIR / "india_places.csv"
 FOREIGN_FILE = REFERENCE_DIR / "foreign_places.csv"
+BOUNDARY_FILE = REFERENCE_DIR / "india_boundary.geojson"
+# Official boundary of India as per the Survey of India, compiled by the DataMeet community (CC0).
+BOUNDARY_SOURCE = "https://raw.githubusercontent.com/datameet/maps/master/Country/india-composite.geojson"
+BOUNDARY_TOLERANCE_DEG = 0.01   # ~1 km: plenty for a national map, keeps the file small
 RAW_DIR = ROOT / "data" / "reference"
 GEONAMES = "https://download.geonames.org/export/dump/"
 MIN_TOWN_POPULATION = 5000
@@ -141,6 +145,76 @@ def build() -> None:
     print(f"Wrote {len(out)} Indian places to {INDIA_FILE} and {len(foreign)} foreign names to {FOREIGN_FILE}")
 
 
+# ---------------------------------------------------------------- India boundary (map outline)
+
+def _simplify(points: list[list[float]], tolerance: float) -> list[list[float]]:
+    """Douglas-Peucker line simplification (iterative)."""
+    if len(points) < 3:
+        return points
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        start, end = stack.pop()
+        (x1, y1), (x2, y2) = points[start][:2], points[end][:2]
+        dx, dy = x2 - x1, y2 - y1
+        norm = (dx * dx + dy * dy) ** 0.5
+        best, index = 0.0, None
+        for i in range(start + 1, end):
+            px, py = points[i][:2]
+            dist = (abs(dy * px - dx * py + x2 * y1 - y2 * x1) / norm if norm
+                    else ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5)
+            if dist > best:
+                best, index = dist, i
+        if index is not None and best > tolerance:
+            keep[index] = True
+            stack += [(start, index), (index, end)]
+    return [p for p, k in zip(points, keep) if k]
+
+
+def build_boundary() -> None:
+    """Download the official India boundary and write a simplified copy for the map (outer rings only)."""
+    import json
+    raw_path = RAW_DIR / "india-composite.geojson"
+    if not raw_path.exists():
+        RAW_DIR.mkdir(parents=True, exist_ok=True)
+        resp = requests.get(BOUNDARY_SOURCE, timeout=300)
+        resp.raise_for_status()
+        raw_path.write_bytes(resp.content)
+    source = json.loads(raw_path.read_text(encoding="utf-8"))
+    rings = []
+    for feature in source["features"]:
+        geometry = feature["geometry"]
+        polygons = geometry["coordinates"] if geometry["type"] == "MultiPolygon" else [geometry["coordinates"]]
+        for polygon in polygons:
+            outer = polygon[0]
+            simple = _simplify(outer, BOUNDARY_TOLERANCE_DEG)
+            if len(simple) < 4:  # small islands: keep a lightly simplified outline
+                simple = _simplify(outer, BOUNDARY_TOLERANCE_DEG / 10)
+            if len(simple) >= 4:
+                rings.append([[round(x, 4), round(y, 4)] for x, y, *_ in simple])
+    boundary = {"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "properties": {"name": "India", "source": "DataMeet India community, india-composite.geojson (CC0), "
+                                                  "official boundary as per the Survey of India"},
+        "geometry": {"type": "MultiPolygon", "coordinates": [[ring] for ring in rings]}}]}
+    REFERENCE_DIR.mkdir(exist_ok=True)
+    BOUNDARY_FILE.write_text(json.dumps(boundary, separators=(",", ":")), encoding="utf-8")
+    print(f"Wrote {len(rings)} polygons ({sum(map(len, rings))} points) to {BOUNDARY_FILE}")
+
+
+def load_boundary(path: Path = BOUNDARY_FILE) -> dict:
+    import json
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def india_mask(boundary: dict) -> dict:
+    """A polygon covering the world with India cut out, to hide everything outside India on the map."""
+    world = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]
+    holes = [polygon[0] for feature in boundary["features"] for polygon in feature["geometry"]["coordinates"]]
+    return {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [world, *holes]}}
+
+
 # ---------------------------------------------------------------- load
 
 def load_india(path: Path = INDIA_FILE) -> list[Place]:
@@ -163,3 +237,4 @@ def load_foreign(path: Path = FOREIGN_FILE) -> dict[str, str]:
 
 if __name__ == "__main__":
     build()
+    build_boundary()

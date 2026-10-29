@@ -392,9 +392,12 @@ class LocationResolver:
         # The dateline is the publisher's location, except when the article reports the outbreak there:
         # the outbreak sentences name no other place and either refer to it ("cases in the city",
         # "here") or the article keeps naming it.
-        named = any(m.role in ("headline", "event") and m.weight > W_LAB and (m.places or m.foreign)
-                    for m in mentions)
         datelines = [m for m in mentions if m.role == "dateline" and m.places]
+        dateline_states = {p.state for m in datelines for p in m.places}
+        # Another place counts only if it is not simply the dateline's own state ("Bhopal: ... in Madhya Pradesh").
+        named = any(m.role in ("headline", "event") and m.weight > W_LAB and
+                    (m.foreign or any(p.kind != "state" or p.state not in dateline_states for p in m.places))
+                    for m in mentions)
         if datelines and not named:
             dateline_name = normalise_name(datelines[0].text)
             repeated = any(normalise_name(m.text) == dateline_name for m in mentions if m.role != "dateline")

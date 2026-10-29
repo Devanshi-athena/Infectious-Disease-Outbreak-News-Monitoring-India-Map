@@ -1,13 +1,27 @@
 # Cue words for relevance (B4) and event classification (B5). Edit to tune; no code changes needed.
-# Re-classify existing articles after editing:  python -m outbreak_monitor.relevance --all
+# Stored articles are re-classified automatically on the next run (or: python -m outbreak_monitor.reprocess).
 #
 # Each entry is a word or phrase, matched case-insensitively as whole words.
 # A trailing * matches any ending, e.g. "hospitali*" matches hospitalised/hospitalized/hospitalisation.
 # Cues are looked for in the sentences that mention a disease (and in the headline).
 # Case counts like "40 new cases", "2,500 chickens" or "tally rises to 70" are detected in code.
 
-# Signs that cases, deaths or an outbreak are being reported.
+# Signs that cases, deaths or an outbreak are being reported. These are relevance cues only: they are
+# looked for in sentences that mention a configured disease, never used on their own to collect articles.
 event:
+  - surge in cases
+  - spike in cases
+  - rise in cases
+  - cluster of cases
+  - suspected cases
+  - related deaths
+  - disease-related deaths
+  - deaths due to
+  - kills
+  - claimed lives
+  - claims lives
+  - fresh cases
+  - new cases
   - cases
   - positive case*
   - confirmed
@@ -32,7 +46,6 @@ event:
   - test positive
   - cases rise
   - cases rising
-  - rise in cases
   - increase in cases
   - cases spread
   - spreading
@@ -180,6 +193,16 @@ current:
   - on friday
   - on saturday
   - on sunday
+
+# Crime, not disease: a headline with these words is not an outbreak report, even if it says "food
+# poisoning" (e.g. a family's deaths that turn out to be murder or suicide). Checked in the headline.
+crime:
+  - murder*
+  - suicide
+  - abetment
+  - homicide
+  - deliberately poisoned
+  - poisoned by
 
 # Articles in these URL sections are treated as not relevant (sports results, celebrity news, opinion...).
 excluded_url_sections:

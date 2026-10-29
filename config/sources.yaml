@@ -167,3 +167,15 @@ sources:
     keyword_pages:
       - https://health.economictimes.indiatimes.com/tag/{slug}/{page}
     article_pattern: '^/news/[^/]+/[^/]+/\d+$'
+
+# Official surveillance reports, stored separately from news (table official_reports) and shown as
+# their own map layer. IDSP weekly outbreak reports are PDFs published by NCDC about two months after
+# the reporting week, so `weeks` (not the news lookback) decides how far back they are kept.
+# Explored but not collected: MoHFW and IDSP websites (pages built by JavaScript / not reachable),
+# PIB releases (all ministries, mostly Hindi), state health department bulletins (formats differ per state).
+official_reports:
+  - name: IDSP weekly outbreak reports (NCDC)
+    type: idsp_weekly
+    enabled: true
+    listing: https://ncdc.mohfw.gov.in/includes/WeeklyOutbreaks.php
+    weeks: 12

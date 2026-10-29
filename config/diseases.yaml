@@ -1,50 +1,131 @@
 ﻿# Diseases to monitor. Edit this file to add, remove or change diseases; no code changes needed.
+# Stored articles are re-tagged automatically on the next run after a change.
 #
-#   keywords      Words/phrases that mark an article as being about the disease. Matched as whole
-#                 words, case-insensitive, in the headline, summary, sitemap keywords and article text.
+#   category      Disease group, used for the "Disease group" filter on the dashboard.
+#   keywords      Disease names, alternative names and spellings that mark an article as being about
+#                 the disease. Matched as whole words, case-insensitive, in the headline and article text.
+#                 Outbreak words ("outbreak", "surge in cases", "cluster", "suspected cases", "deaths")
+#                 are NOT keywords: they are relevance cues in config/relevance.yaml, used only to judge
+#                 whether an article about a disease reports an outbreak.
 #   search_terms  Terms used to open each site's topic/search page (sources.yaml -> keyword_pages).
 #                 Keep these short and broad. Defaults to the first keyword if omitted.
+#
+# Initial configuration agreed with the project manager; refine using the relevance and location results.
 
 diseases:
+  # ---------------------------------------------------------------- Vector-borne
   - name: Dengue
-    keywords: ["dengue", "dengue fever", "dengue cases", "dengue outbreak"]
+    category: Vector-borne
+    keywords: ["dengue", "dengue fever", "dengue haemorrhagic fever", "dengue hemorrhagic fever",
+               "dengue shock syndrome", "breakbone fever"]
     search_terms: ["dengue"]
 
   - name: Malaria
-    keywords: ["malaria", "malaria cases", "plasmodium", "falciparum", "vivax"]
+    category: Vector-borne
+    keywords: ["malaria", "cerebral malaria", "plasmodium", "falciparum", "vivax"]
     search_terms: ["malaria"]
 
   - name: Chikungunya
-    keywords: ["chikungunya", "chikungunya cases"]
+    category: Vector-borne
+    keywords: ["chikungunya", "chikun gunya"]
     search_terms: ["chikungunya"]
 
-  - name: Cholera / Acute Diarrhoeal Disease
-    keywords: ["cholera", "acute diarrhoeal disease", "diarrhoea outbreak", "diarrhea outbreak", "gastroenteritis outbreak"]
-    search_terms: ["cholera", "diarrhoea"]
-
-  - name: Typhoid
-    keywords: ["typhoid", "enteric fever"]
-    search_terms: ["typhoid"]
-
-  - name: Hepatitis A / E (Jaundice)
-    keywords: ["hepatitis A", "hepatitis E", "jaundice outbreak", "jaundice cases", "viral hepatitis"]
-    search_terms: ["hepatitis", "jaundice"]
-
   - name: Japanese Encephalitis / AES
-    keywords: ["Japanese encephalitis", "acute encephalitis syndrome", "AES cases", "brain fever", "chandipura"]
+    category: Vector-borne
+    keywords: ["Japanese encephalitis", "acute encephalitis syndrome", "encephalitis", "AES cases", "AES deaths",
+               "brain fever", "chamki bukhar", "chandipura", "chandipura virus"]
     search_terms: ["japanese encephalitis", "encephalitis", "chandipura"]
 
+  # ---------------------------------------------------------------- Water- and food-borne
+  - name: Cholera
+    category: Water- and food-borne
+    keywords: ["cholera", "vibrio cholerae"]
+    search_terms: ["cholera"]
+
+  - name: Acute Diarrhoeal Disease
+    category: Water- and food-borne
+    keywords: ["acute diarrhoeal disease", "acute diarrheal disease", "diarrhoea", "diarrhea", "gastroenteritis",
+               "dysentery", "food poisoning", "loose motions"]
+    search_terms: ["diarrhoea", "gastroenteritis", "food poisoning"]
+
+  - name: Typhoid
+    category: Water- and food-borne
+    keywords: ["typhoid", "typhoid fever", "enteric fever", "salmonella typhi"]
+    search_terms: ["typhoid"]
+
+  - name: Hepatitis A / E
+    category: Water- and food-borne
+    # "jaundice" alone also matches liver disease and newborn jaundice, so only outbreak phrasing is used.
+    keywords: ["hepatitis A", "hepatitis E", "hepatitis-A", "hepatitis-E", "viral hepatitis",
+               "jaundice outbreak", "outbreak of jaundice", "jaundice cases", "jaundice case", "cases of jaundice",
+               "jaundice deaths", "jaundice death", "died of jaundice", "jaundice patients", "jaundice spread"]
+    search_terms: ["hepatitis", "jaundice"]
+
+  # ---------------------------------------------------------------- Emerging and zoonotic
   - name: Nipah
+    category: Emerging and zoonotic
     keywords: ["nipah", "nipah virus"]
     search_terms: ["nipah"]
 
-  - name: Influenza (H1N1 / H3N2 / Bird flu)
-    keywords: ["swine flu", "H1N1", "H3N2", "H5N1", "bird flu", "avian influenza", "influenza outbreak"]
-    search_terms: ["swine flu", "h1n1", "bird flu"]
+  - name: Leptospirosis
+    category: Emerging and zoonotic
+    keywords: ["leptospirosis", "rat fever", "Weil's disease"]
+    search_terms: ["leptospirosis", "rat fever"]
+
+  - name: Scrub Typhus
+    category: Emerging and zoonotic
+    keywords: ["scrub typhus", "bush typhus", "tsutsugamushi"]
+    search_terms: ["scrub typhus"]
+
+  - name: Kyasanur Forest Disease (KFD)
+    category: Emerging and zoonotic
+    keywords: ["Kyasanur Forest Disease", "Kyasanur Forest", "KFD", "monkey fever"]
+    search_terms: ["monkey fever", "kyasanur forest disease"]
+
+  - name: Rabies
+    category: Emerging and zoonotic
+    keywords: ["rabies", "rabid", "hydrophobia"]
+    search_terms: ["rabies"]
+
+  - name: Other zoonotic outbreaks
+    category: Emerging and zoonotic
+    # "plague" alone is mostly a figure of speech ("plagued by"), so only the disease forms are used.
+    keywords: ["bird flu", "avian influenza", "avian flu", "H5N1", "H5N8", "anthrax", "brucellosis",
+               "bubonic plague", "pneumonic plague", "plague outbreak", "plague case", "plague cases",
+               "Crimean-Congo haemorrhagic fever", "Crimean-Congo hemorrhagic fever", "CCHF", "mpox", "monkeypox",
+               "zoonotic"]
+    search_terms: ["bird flu", "anthrax", "mpox"]
+
+  # ---------------------------------------------------------------- Respiratory and vaccine-preventable
+  - name: Influenza (H1N1 / H3N2)
+    category: Respiratory and vaccine-preventable
+    keywords: ["influenza", "swine flu", "seasonal flu", "flu cases", "flu outbreak", "H1N1", "H3N2",
+               "influenza A", "influenza B"]
+    search_terms: ["influenza", "swine flu", "h1n1", "h3n2"]
+
+  - name: COVID-19
+    category: Respiratory and vaccine-preventable
+    keywords: ["COVID-19", "COVID", "coronavirus", "SARS-CoV-2", "novel coronavirus"]
+    search_terms: ["covid"]
 
   - name: Measles
-    keywords: ["measles", "measles outbreak", "rubella"]
+    category: Respiratory and vaccine-preventable
+    keywords: ["measles", "rubella", "measles-rubella"]
     search_terms: ["measles"]
+
+  - name: Diphtheria
+    category: Respiratory and vaccine-preventable
+    keywords: ["diphtheria"]
+    search_terms: ["diphtheria"]
+
+  # ---------------------------------------------------------------- Other epidemic-prone
+  - name: Unexplained fever / deaths / clusters
+    category: Other epidemic-prone
+    keywords: ["mystery fever", "mysterious fever", "unknown fever", "unidentified fever", "mystery illness",
+               "mysterious illness", "mystery disease", "mysterious disease", "unknown disease",
+               "unidentified disease", "unexplained illness", "unexplained deaths", "mysterious deaths",
+               "mystery deaths", "fever outbreak", "viral fever outbreak", "fever cluster", "acute febrile illness"]
+    search_terms: ["mystery fever", "mysterious disease"]
 
 settings:
   lookback_days: 45              # first run (backfill) collects this far back; older articles are ignored

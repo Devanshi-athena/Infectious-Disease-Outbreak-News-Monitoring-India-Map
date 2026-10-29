@@ -46,6 +46,7 @@ from .location import LocationResolver, build_resolver
 from .location import apply as apply_location
 from .logs import setup_logging
 from .matcher import KeywordMatcher
+from .official import collect_official
 from .processing import STORY_WINDOW, StoryIndex, clean_headline, tag_content
 from .relevance import RelevanceClassifier, apply, load_relevance_config
 from .reprocess import reprocess
@@ -356,6 +357,11 @@ def run_and_report(session_factory=None, backfill: bool = False) -> dict:
     """One collection run with a summary in the log."""
     session_factory = session_factory or get_session_factory()
     result = collect(session_factory, backfill=backfill)
+    try:  # official reports are a separate stage: a slow or failing NCDC site never blocks news collection
+        result["official"] = collect_official(session_factory)
+    except Exception as exc:
+        log.exception("Official reports failed")
+        result["official"] = {"errors": [{"source": "official", "error": f"{type(exc).__name__}: {exc}"[:500]}]}
     with session_factory() as session:
         last = last_successful_run(session)
     log.info("Run finished: %s", result)

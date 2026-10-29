@@ -27,10 +27,21 @@ class Source:
 
 
 @dataclass
+class OfficialSource:
+    """An official outbreak-report series (config/sources.yaml -> official_reports)."""
+    name: str
+    type: str          # idsp_weekly
+    listing: str       # page listing the report files
+    weeks: int = 12    # most recent weekly reports to keep
+    enabled: bool = True
+
+
+@dataclass
 class Disease:
     name: str
     keywords: list[str]
     search_terms: list[str] = field(default_factory=list)
+    category: str = "Other"   # disease group, e.g. "Vector-borne"
 
     def __post_init__(self):
         if not self.search_terms and self.keywords:
@@ -61,11 +72,15 @@ def load_sources(path: Path = CONFIG_DIR / "sources.yaml") -> list[Source]:
     return [Source(**s) for s in _read_yaml(path).get("sources") or []]
 
 
+def load_official_sources(path: Path = CONFIG_DIR / "sources.yaml") -> list[OfficialSource]:
+    return [OfficialSource(**s) for s in _read_yaml(path).get("official_reports") or []]
+
+
 def load_disease_config(path: Path = CONFIG_DIR / "diseases.yaml") -> DiseaseConfig:
     data = _read_yaml(path)
     diseases = [
         Disease(name=d["name"], keywords=list(d.get("keywords") or []),
-                search_terms=list(d.get("search_terms") or []))
+                search_terms=list(d.get("search_terms") or []), category=d.get("category") or "Other")
         for d in data.get("diseases") or []
     ]
     return DiseaseConfig(diseases=diseases, settings=Settings(**(data.get("settings") or {})))

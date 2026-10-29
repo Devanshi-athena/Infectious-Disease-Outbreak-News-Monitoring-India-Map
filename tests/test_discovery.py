@@ -193,5 +193,6 @@ def test_config_files_load():
         assert s.domain and (s.rss or s.sitemaps or s.keyword_pages)
         assert not s.keyword_pages or s.article_pattern
     cfg = load_disease_config()
-    assert cfg.diseases and all(d.keywords and d.search_terms for d in cfg.diseases)
+    assert cfg.diseases and all(d.keywords and d.search_terms and d.category for d in cfg.diseases)
+    assert len({d.name for d in cfg.diseases}) == len(cfg.diseases)  # unique names
     assert cfg.settings.lookback_days > 0 and cfg.settings.backfill_max_pages >= 1

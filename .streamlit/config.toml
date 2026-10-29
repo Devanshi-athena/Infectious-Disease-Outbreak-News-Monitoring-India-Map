@@ -1,0 +1,33 @@
+# Dashboard server settings. Only this computer can open the dashboard (it can save review
+# decisions and start collection runs). Change address to "0.0.0.0" only behind proper access control.
+[server]
+address = "localhost"
+port = 8501
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"   # no "Deploy" button
+
+# Classic "atlas" look: ivory paper, parchment sidebar, navy accents, serif headings.
+[theme]
+base = "light"
+primaryColor = "#1F3A5F"
+backgroundColor = "#FBF8F1"
+secondaryBackgroundColor = "#F2ECDF"
+textColor = "#222831"
+linkColor = "#1F3A5F"
+borderColor = "#E2D9C6"
+dataframeBorderColor = "#E2D9C6"
+dataframeHeaderBackgroundColor = "#F2ECDF"
+headingFont = "Georgia, 'Times New Roman', serif"
+font = "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+baseRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#F2ECDF"
+secondaryBackgroundColor = "#FBF8F1"

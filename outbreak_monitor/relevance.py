@@ -31,9 +31,11 @@ from .config import CONFIG_DIR, Disease, _read_yaml
 from .matcher import compile_phrases
 from .processing import split_paragraphs
 
-CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current")
+CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current",
+             "crime")
 LEAD_SENTENCES = 3
 MAX_TEXT_CHARS = 20_000
+MIN_SECONDARY_EVENTS = 2   # outbreak sentences needed for a disease not named in the headline
 
 # A count: "40", "2,500", "1,00,000" or a number word. Not part of a name or code ("COVID-19",
 # "H1N1"), not a decimal, and not a year ("in 2019,").
@@ -101,6 +103,7 @@ class RelevanceClassifier:
 
         # Per disease: where it is mentioned and what the mentioning sentences say.
         central, event_d, response_d, event_sents = [], [], [], set()
+        in_headline, event_count = set(), {}
         for name, pattern in self.diseases.items():
             idx = [i for i, s in enumerate(sents) if pattern.search(s)]
             if not idx:
@@ -111,8 +114,11 @@ class RelevanceClassifier:
             if not (in_head or len(body) >= 3 or (in_lead and len(body) >= 2)):
                 continue
             central.append(name)
+            if in_head:
+                in_headline.add(name)
             reasons.append(f"{name}: {'in headline, ' if in_head else ''}{len(body)} sentence(s)")
             events = [(i, e) for i in idx if (e := self._event(sents[i]))]
+            event_count[name] = len(events)
             if events:
                 event_d.append(name)
                 event_sents.update(i for i, _ in events)
@@ -127,6 +133,8 @@ class RelevanceClassifier:
         if not central:
             return Classification("irrelevant", "passing_mention", reasons=["no disease is central to the article"])
 
+        if cue := self._cue("crime", headline):
+            return Classification("irrelevant", "other", reasons=reasons + [f"crime headline: '{cue}'"])
         head_event = self._event(headline)
         if not head_event and (cue := self._cue("research", headline)):
             return Classification("irrelevant", "research", reasons=reasons + [f"research headline: '{cue}'"])
@@ -142,6 +150,15 @@ class RelevanceClassifier:
             content_type, relevant = "public_health_response", response_d
         else:
             return Classification("irrelevant", "other", reasons=reasons + ["no event or response cue"])
+
+        # When the headline names a disease, another disease counts as reported only with at least two
+        # outbreak sentences of its own ("Dengue cases soar…" mentioning Covid-like symptoms is not a
+        # Covid report). If that leaves nothing, the earlier list stands.
+        if in_headline & set(relevant):
+            focused = [d for d in relevant if d in in_headline or event_count.get(d, 0) >= MIN_SECONDARY_EVENTS]
+            if dropped := [d for d in relevant if d not in focused]:
+                reasons.append(f"secondary mention(s) not counted: {', '.join(dropped)}")
+            relevant = focused
 
         status, why = self._event_status(sents, event_sents | {0}, content_type, published_at)
         return Classification("relevant", content_type, status, relevant, reasons + [why])

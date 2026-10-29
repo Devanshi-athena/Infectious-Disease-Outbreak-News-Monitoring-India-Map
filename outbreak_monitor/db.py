@@ -3,10 +3,12 @@
 All datetimes are stored as naive UTC.
 """
 
-from datetime import datetime, timezone
+import os
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, create_engine, inspect, select, text
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, Integer, String, Text, create_engine, inspect, select,
+                        text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "outbreaks.db"
@@ -77,6 +79,33 @@ class Article(Base):
     location_candidates: Mapped[list | None] = mapped_column(JSON)       # every Indian place considered
 
 
+class OfficialReport(Base):
+    """One outbreak record from an official surveillance report (IDSP weekly outbreak reports, NCDC)."""
+
+    __tablename__ = "official_reports"
+
+    report_id: Mapped[str] = mapped_column(String(60), primary_key=True)   # IDSP unique ID, e.g. AS/BAJ/2026/34/1369
+    source_name: Mapped[str] = mapped_column(String(200))
+    report_url: Mapped[str] = mapped_column(String(2000), index=True)     # the weekly PDF
+    report_year: Mapped[int] = mapped_column(Integer)
+    report_week: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str | None] = mapped_column(String(100), index=True)
+    district: Mapped[str | None] = mapped_column(String(100))
+    disease_raw: Mapped[str | None] = mapped_column(Text)                 # as written in the report
+    diseases: Mapped[list | None] = mapped_column(JSON)                   # configured diseases it maps to
+    cases: Mapped[int | None] = mapped_column(Integer)
+    deaths: Mapped[int | None] = mapped_column(Integer)
+    onset_date: Mapped[date | None] = mapped_column(Date)
+    reported_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str | None] = mapped_column(String(100))
+    action_taken: Mapped[str | None] = mapped_column(Text)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    location_level: Mapped[str | None] = mapped_column(String(20))       # district / state
+    location_confidence: Mapped[str | None] = mapped_column(String(20))
+    collected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class SeenLink(Base):
     """Links that were checked but not stored, so later runs don't download them again.
     fetch_failed links are retried until `attempts` reaches the limit."""
@@ -139,12 +168,14 @@ def last_successful_run(session) -> CollectionRun | None:
 
 
 def get_session_factory(db_url: str | None = None) -> sessionmaker:
-    """Session factory for db_url, or for data/outbreaks.db (created once per process)."""
+    """Session factory for db_url; otherwise for the OUTBREAK_DB_URL environment variable (e.g.
+    postgresql+psycopg://user:pass@host/db) or data/outbreaks.db. The default is created once per process."""
     global _default_factory
     if db_url is None and _default_factory is not None:
         return _default_factory
-    url = db_url or f"sqlite:///{DEFAULT_DB_PATH}"
-    if db_url is None:
+    env_url = os.environ.get("OUTBREAK_DB_URL")
+    url = db_url or env_url or f"sqlite:///{DEFAULT_DB_PATH}"
+    if db_url is None and not env_url:
         DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     connect_args = {"timeout": SQLITE_LOCK_TIMEOUT_SECONDS} if url.startswith("sqlite") else {}
     engine = create_engine(url, connect_args=connect_args)
