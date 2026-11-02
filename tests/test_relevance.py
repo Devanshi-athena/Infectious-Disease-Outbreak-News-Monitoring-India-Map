@@ -138,3 +138,26 @@ def test_jaundice_and_plague_need_outbreak_phrasing():
     assert m.match("Town plagued by potholes") == []
     assert m.match("3 jaundice deaths in Nainital") == ["Hepatitis A / E"]
     assert m.match("Bubonic plague case confirmed") == ["Other zoonotic outbreaks"]
+
+
+def test_comparison_and_past_events_are_not_outbreak_reports():
+    clf = RelevanceClassifier([Disease("COVID-19", ["covid", "covid-19"])], load_relevance_config())
+    r = clf.classify("'Ebola is like Covid pandemic': African CDC chief says no country is safe",
+                     "Ebola has killed 40 people in Congo. Officials said the response must be fast.",
+                     "https://a.in/x", PUBLISHED)
+    assert r.relevance == "irrelevant"
+    r = clf.classify("HC orders Rs 50L Covid ex gratia despite absence of RT-PCR report",
+                     "The man died of Covid in 2021. Covid deaths were 40 that month. His Covid report was missing.",
+                     "https://a.in/y", PUBLISHED)
+    assert (r.relevance, r.content_type) == ("irrelevant", "other")
+    r = clf.classify("Covid cases rise to 40 in Pune", "Pune reported 40 Covid cases this week.", "https://a.in/z",
+                     PUBLISHED)
+    assert r.relevance == "relevant"
+
+
+def test_keywords_match_across_quote_marks():
+    from outbreak_monitor.matcher import compile_phrases
+    pattern = compile_phrases(["mystery fever", "bird flu"])
+    assert pattern.search("'Mystery' fever kills 2 sisters in Baran")
+    assert pattern.search("“Bird” flu scare") and pattern.search("bird-flu cases")
+    assert not pattern.search("mysteryfever") and not pattern.search("birds flu")

@@ -32,7 +32,7 @@ from .matcher import compile_phrases
 from .processing import split_paragraphs
 
 CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current",
-             "crime")
+             "crime", "past_event", "comparison")
 LEAD_SENTENCES = 3
 MAX_TEXT_CHARS = 20_000
 MIN_SECONDARY_EVENTS = 2   # outbreak sentences needed for a disease not named in the headline
@@ -92,6 +92,14 @@ class RelevanceClassifier:
         m = pattern.search(text) if pattern else None
         return m.group(0) if m else None
 
+    def _without_comparisons(self, text: str, disease: re.Pattern) -> str:
+        """The text without '<comparison word> [the/a] <disease>' ("like Covid"), so a comparison is not a mention."""
+        comparison = self.cues["comparison"]
+        if not comparison:
+            return text
+        return re.sub(rf"(?:{comparison.pattern})\s+(?:(?:the|a|an)\s+)?(?:{disease.pattern})", " ", text,
+                      flags=re.IGNORECASE)
+
     def _event(self, text: str) -> str | None:
         m = CASE_COUNT.search(text)
         return m.group(0) if m else self._cue("event", text)
@@ -105,7 +113,7 @@ class RelevanceClassifier:
         central, event_d, response_d, event_sents = [], [], [], set()
         in_headline, event_count = set(), {}
         for name, pattern in self.diseases.items():
-            idx = [i for i, s in enumerate(sents) if pattern.search(s)]
+            idx = [i for i, s in enumerate(sents) if pattern.search(self._without_comparisons(s, pattern))]
             if not idx:
                 continue
             in_head = idx[0] == 0
@@ -135,6 +143,8 @@ class RelevanceClassifier:
 
         if cue := self._cue("crime", headline):
             return Classification("irrelevant", "other", reasons=reasons + [f"crime headline: '{cue}'"])
+        if cue := self._cue("past_event", headline):
+            return Classification("irrelevant", "other", reasons=reasons + [f"past-event headline: '{cue}'"])
         head_event = self._event(headline)
         if not head_event and (cue := self._cue("research", headline)):
             return Classification("irrelevant", "research", reasons=reasons + [f"research headline: '{cue}'"])

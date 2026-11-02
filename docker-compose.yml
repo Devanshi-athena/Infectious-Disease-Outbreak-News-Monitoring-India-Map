@@ -1,0 +1,31 @@
+# docker compose up --build     -> dashboard at http://localhost:8501, collection every 30 minutes
+#
+# Both services share the database in the "outbreak-data" volume. config/ is mounted read-only,
+# so keywords and sources can be changed without rebuilding (they apply from the next run).
+services:
+  dashboard:
+    build: .
+    environment:
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0   # inside the container; the port below is published to this computer only
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - outbreak-data:/app/data
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  collector:
+    build: .
+    command: ["python", "-m", "outbreak_monitor.scheduler"]
+    volumes:
+      - outbreak-data:/app/data
+      - ./config:/app/config:ro
+    restart: unless-stopped
+
+volumes:
+  outbreak-data:

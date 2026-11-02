@@ -6,11 +6,12 @@ from .config import Disease
 
 
 def phrase_pattern(phrase: str) -> str:
-    """Regex for a phrase as whole words (use case-insensitively); spaces also match hyphens/newlines.
-    A trailing * matches any word ending (e.g. "hospitali*")."""
+    """Regex for a phrase as whole words (use case-insensitively); spaces also match hyphens/newlines
+    and quote marks ("'Mystery' fever" matches "mystery fever"). A trailing * matches any word ending
+    (e.g. "hospitali*")."""
     wildcard = phrase.endswith("*")
     words = phrase.rstrip("*").split()
-    body = r"[\s-]+".join(map(re.escape, words))
+    body = r"""[\s\-'‘’"“”]*[\s-][\s\-'‘’"“”]*""".join(map(re.escape, words))
     return r"(?<!\w)" + body + (r"\w*" if wildcard else r"(?!\w)")
 
 

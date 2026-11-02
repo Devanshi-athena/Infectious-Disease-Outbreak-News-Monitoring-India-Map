@@ -204,6 +204,28 @@ crime:
   - deliberately poisoned
   - poisoned by
 
+# About a past outbreak, not a current one: compensation and "-era" stories (e.g. "HC orders Covid
+# ex gratia", "Covid-era drug approvals"). Checked in the headline.
+past_event:
+  - ex gratia
+  - ex-gratia
+  - covid era
+  - pandemic era
+  - lockdown era
+  - covid relief
+  - covid aid
+  - covid compensation
+
+# A disease named only as a comparison does not count as mentioned: "Ebola is like Covid pandemic",
+# "worse than dengue". The word must come right before the disease name (an optional "the"/"a" between).
+comparison:
+  - like
+  - than
+  - similar to
+  - akin to
+  - compared to
+  - compared with
+
 # Articles in these URL sections are treated as not relevant (sports results, celebrity news, opinion...).
 excluded_url_sections:
   - opinion

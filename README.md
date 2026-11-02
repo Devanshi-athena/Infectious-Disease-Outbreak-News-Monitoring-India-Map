@@ -12,7 +12,8 @@ A news-based outbreak monitoring prototype. It is not an official surveillance o
 | D. Interactive India map and dashboard | Done (includes the Refresh button and review controls) |
 | E. Data storage (SQLite, PostgreSQL-ready) | Done |
 | Official sources (manager's request) | IDSP weekly outbreak reports (NCDC) integrated as a separate layer; other official sources explored (see below) |
-| Evaluation report, Docker, sample records | Later phases |
+| Evaluation report | Done: [`evaluation/REPORT.md`](evaluation/REPORT.md), 120 labelled articles (labels AI-assisted, to be verified) |
+| Docker, sample records, demo | Docker files written (not yet built on this machine); samples in `samples/`; demo steps below |
 
 The disease configuration is the list agreed with the project manager: 19 diseases in 5 groups. Sources: the 10 news sites plus one official source (IDSP weekly outbreak reports), 11 in total. Both are configuration files (see [Configuration](#configuration)) and will be refined using the relevance and location results.
 
@@ -68,6 +69,19 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+## Setup with Docker
+
+```powershell
+docker compose up --build        # dashboard at http://localhost:8501 + collection every 30 minutes
+docker compose down              # stop (the database stays in the "outbreak-data" volume)
+```
+
+- Two services from one image: `dashboard` (Streamlit) and `collector` (the scheduler). They share the database in the `outbreak-data` volume.
+- `config/` is mounted read-only, so keywords and sources can be changed without rebuilding; changes apply from the next run.
+- The dashboard port is published to this computer only (`127.0.0.1:8501`).
+- Run other commands inside the container, e.g. `docker compose exec collector python -m outbreak_monitor.collector --backfill` or `docker compose run --rm collector pytest`.
+- The Docker files have not been built on the development machine yet (Docker is not installed there).
+
 ## Usage
 
 ```powershell
@@ -80,6 +94,8 @@ python -m outbreak_monitor.reprocess              # re-tag, re-classify and re-l
 python -m outbreak_monitor.gazetteer              # rebuild reference/ place data from GeoNames (rarely needed)
 python -m evaluation.recall_check                 # coverage check against Bing News (evaluation only)
 python -m evaluation.location_eval                # location accuracy on the labelled sample
+python -m evaluation.evaluate                     # relevance, event, disease and location scores (120 labelled articles)
+python -m outbreak_monitor.export_samples         # sample records + database schema to samples/
 pytest                                            # run tests
 ```
 
@@ -231,6 +247,26 @@ Every article gets the most specific outbreak location **the article supports**:
 
 **Accuracy** on the labelled sample in `evaluation/location_labels.csv` (60 relevant articles; AI-assisted labels, spot-checked by the project owner): **state/UT 95%, district level 92%**. Run `python -m evaluation.location_eval` to recompute.
 
+## Evaluation
+
+[`evaluation/REPORT.md`](evaluation/REPORT.md) is the evaluation report. On 120 randomly sampled articles: relevance precision 83%, recall 93% (F1 0.88; recall 95% after fixing one bug the evaluation found); event status 96%; state 98%, district level 82%. The labels (`evaluation/labels.csv`) are AI-assisted and still to be verified by a person; the report lists every disagreement and the recommended fixes. `python -m evaluation.evaluate` recomputes everything and writes `evaluation/results.md`.
+
+## Sample records
+
+`samples/` holds 25 articles (metadata only: headline, URL, dates, keywords, classification and location; the article text is the publishers' and is not included), 25 official IDSP records, and `schema.sql` (the database schema). Regenerate with `python -m outbreak_monitor.export_samples`.
+
+## Demonstration (about 10 minutes)
+
+1. `streamlit run app.py` (or `docker compose up`) and open http://localhost:8501.
+2. **Map:** India only, one marker per story, colours by event status; green squares are official IDSP records. Click a marker: disease, headline, place, date, and links to every source.
+3. **Filters:** choose the disease group "Vector-borne", then the state "Maharashtra"; the map, counts and lists follow. Use *Zoom to district*.
+4. **Article register:** sort by date, open an original article, mark one article irrelevant under *Your review* and save: it leaves the map.
+5. **Official reports tab:** the same outbreaks from IDSP, with a link to each weekly PDF.
+6. **Configuration:** add a keyword in `config/diseases.yaml` (e.g. a new local name), press *Refresh now*: stored articles are re-classified and new ones collected with the new keyword.
+7. **Evaluation:** show `evaluation/REPORT.md`.
+
+Close with the caveat on the page: this is a news-based monitoring tool, not an official surveillance system; article counts are not case counts.
+
 ## Dashboard
 
 `streamlit run app.py` opens the dashboard at http://localhost:8501. It is built with Streamlit, Folium (Leaflet) and streamlit-folium. The page is in `app.py`; the data logic is in `outbreak_monitor/dashboard_data.py`.
@@ -312,7 +348,7 @@ Changing any of these files needs no code changes. Edits take effect from the ne
   - `keywords`: phrases that mark an article as being about each disease. Matching is whole-word and case-insensitive.
   - `search_terms`: the terms used to open each site's topic or search page.
   - `settings`: `lookback_days`, `refresh_interval_minutes`, `backfill_max_pages` and `country`.
-- **`config/relevance.yaml`** holds the cue words for relevance and event classification, crime words that rule a headline out (a "food poisoning" that turns out to be murder), and the URL sections to exclude.
+- **`config/relevance.yaml`** holds the cue words for relevance and event classification; headline words that rule an article out (crime, e.g. a "food poisoning" that turns out to be murder; past events such as "Covid ex gratia"); comparison words ("like Covid" is not a Covid mention); and the URL sections to exclude.
 - **`config/locations.yaml`** holds place abbreviations and extra spellings, display names, and the geocoding settings (enable/disable, User-Agent, request delay).
 - **`config/sources.yaml`** lists each site with its `domain` and any of `rss`, `sitemaps`, `archive_sitemaps` (+ `archive_child_pattern`) and `keyword_pages` (+ `article_pattern`). To pause a source, set `enabled: false`. A newly added source is backfilled automatically. The file's header comments explain each field. Its `official_reports` section lists official report series (`listing`, `weeks` to keep, `enabled`).
 
@@ -355,7 +391,22 @@ The collector does not log in, bypass paywalls or crawl whole sites.
 - The full article text is stored only for internal processing (keyword matching, classification and location).
 - It is not republished. The dashboard will show the headline, source, date and short metadata, and link to the original article.
 
-**Terms of use:** each publisher's terms of use and copyright policy have **not yet been formally reviewed**. Before production use or wider sharing, the project owner should confirm for each source in `config/sources.yaml` that automated access and internal text processing are permitted, and disable any source where they are not.
+**Terms of use** (review started 2 November 2026; not legal advice):
+- **NCDC** (official reports): its [Copyright Policy](https://ncdc.mohfw.gov.in/includes/Footer/Copyright_Policy.php) allows reproduction "partially or fully" with the source "duly & prominently" acknowledged (third-party material excluded). The dashboard names IDSP/NCDC and links every record to its weekly PDF. The site's policies say nothing about automated access or RSS.
+- **News sites:** their terms pages could not be read by an automated check (blocked or not found), so they must be read in a browser. Before production use or wider sharing, confirm for each one that automated reading of feeds/sitemaps and internal text processing are permitted, fill in the table, and set `enabled: false` for any source where they are not.
+
+| Source | Terms page checked (URL, date) | Automated access / RSS allowed? | Decision |
+|---|---|---|---|
+| The Hindu | | | |
+| Times of India | | | |
+| The Indian Express | | | |
+| Hindustan Times | | | |
+| NDTV | | | |
+| India Today | | | |
+| News18 | | | |
+| Deccan Chronicle | | | |
+| Scroll | | | |
+| ET HealthWorld | | | |
 
 **External services and data:**
 
@@ -392,13 +443,16 @@ New columns are added to an existing database automatically.
   - `relevance.py` classifies articles
   - `gazetteer.py` builds and loads the reference place data; `location.py` finds the outbreak location
   - `official.py` reads the IDSP weekly outbreak reports
+  - `export_samples.py` writes the sample records and schema to `samples/`
   - `dashboard_data.py` loads, filters and groups articles and official records for the dashboard
   - `collector.py` runs the pipeline
   - `reprocess.py` re-applies the configuration to stored articles
   - `scheduler.py` runs the pipeline on a schedule
 - `config/`: diseases and keywords, relevance cues, locations, and news sources (YAML)
 - `reference/`: India and foreign place reference data (from GeoNames)
-- `evaluation/`: coverage check (`recall_check.py`), location accuracy (`location_eval.py` + `location_labels.csv`)
+- `evaluation/`: evaluation report (`REPORT.md`, `results.md`), scoring (`evaluate.py` + `labels.csv`), location accuracy (`location_eval.py` + `location_labels.csv`), coverage check (`recall_check.py`)
+- `samples/`: sample records and the database schema
+- `Dockerfile`, `docker-compose.yml`: container setup
 - `tests/`: pytest tests
 - `data/`: SQLite database and logs (not committed)
 

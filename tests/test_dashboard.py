@@ -149,3 +149,15 @@ def test_latest_reports_and_states(factory):
     assert len(reports) == 3                      # articles 1 and 2 are one story
     assert reports[0]["published"].strftime("%Z") == "IST"
     assert reports_by_state(df) == [("Maharashtra", 2), ("Kerala", 1)]
+
+
+def test_export_samples(factory, tmp_path):
+    import csv, json
+    from outbreak_monitor.export_samples import main
+    counts = main(factory, tmp_path / "samples")
+    assert counts["articles"] >= 1
+    with open(tmp_path / "samples" / "articles_sample.csv", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert "article_text" not in rows[0]                      # publishers' text is never exported
+    assert json.loads(rows[0]["disease_tags"]) == ["Dengue"]  # JSON columns as JSON
+    assert "CREATE TABLE official_reports" in (tmp_path / "samples" / "schema.sql").read_text(encoding="utf-8")
