@@ -1,401 +1,240 @@
 # Infectious Disease Outbreak News Monitoring & India Map
 
-A news-based outbreak monitoring prototype. It is not an official surveillance or early-warning system. News coverage can be incomplete or delayed, and article counts do not measure disease incidence.
+This tool collects news about infectious disease outbreaks in India, works out which articles actually report an outbreak, finds where it happened, and plots it on an interactive map of India. It also pulls in the official weekly outbreak reports published by NCDC (IDSP), so news and official records can be seen side by side.
 
-## Project status
+It is a news-based monitoring prototype, not an official surveillance or early-warning system. News coverage can be incomplete or delayed, and the number of articles says nothing about how many people are ill.
 
-| Area (requirements document) | Status |
-|---|---|
-| A. News collection and extraction | Done. The dashboard "Refresh" button comes with section D |
-| B. Configurable keywords and relevance | Done. The control for setting the review status comes with section D |
-| C. Location extraction and geocoding | Done |
-| D. Interactive India map and dashboard | Done (includes the Refresh button and review controls) |
-| E. Data storage (SQLite, PostgreSQL-ready) | Done |
-| Official sources (manager's request) | IDSP weekly outbreak reports (NCDC) integrated as a separate layer; other official sources explored (see below) |
-| Evaluation report | Done: [`evaluation/REPORT.md`](evaluation/REPORT.md), 120 labelled articles (labels AI-assisted, to be verified) |
-| Docker, sample records, demo | Docker files written (not yet built on this machine); samples in `samples/`; demo steps below |
+Everything runs locally in Python with open-source libraries. No paid APIs or language models are used.
 
-The disease configuration is the list agreed with the project manager: 19 diseases in 5 groups. Sources: the 10 news sites plus one official source (IDSP weekly outbreak reports), 11 in total. Both are configuration files (see [Configuration](#configuration)) and will be refined using the relevance and location results.
+## What it does
 
-## Monitored diseases
+1. Every 30 minutes (or when you press *Refresh now*) it reads RSS feeds, sitemaps and topic pages from 10 Indian news sites and keeps only articles that mention a monitored disease.
+2. For each article it stores the headline, source, publication date, URL and text, and records which disease keywords matched.
+3. A rule-based classifier decides whether the article reports an outbreak (or a public-health response to one), and whether the report is new, suspected or historical.
+4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline.
+5. The dashboard shows the reports on a map of India, with filters, an article list, and a column where you can mark articles relevant or irrelevant.
 
-| Group | Diseases (each with alternative names and spellings in `config/diseases.yaml`) |
-|---|---|
-| Vector-borne | Dengue · Malaria · Chikungunya · Japanese Encephalitis / AES (incl. "brain fever", "chamki bukhar", Chandipura) |
-| Water- and food-borne | Cholera · Acute Diarrhoeal Disease (incl. gastroenteritis, food poisoning) · Typhoid · Hepatitis A / E (incl. "jaundice cases/outbreak/deaths"; "jaundice" alone also matched liver disease and newborn care) |
-| Emerging and zoonotic | Nipah · Leptospirosis ("rat fever") · Scrub Typhus · Kyasanur Forest Disease ("monkey fever") · Rabies · Other zoonotic outbreaks (bird flu/H5N1, anthrax, brucellosis, bubonic/pneumonic plague, CCHF, mpox) |
-| Respiratory and vaccine-preventable | Influenza (incl. H1N1, H3N2, swine flu) · COVID-19 · Measles (incl. rubella) · Diphtheria |
-| Other epidemic-prone | Unexplained fever / deaths / clusters ("mystery fever", "unknown disease", "unexplained deaths", "fever outbreak"…) |
+Diseases, keywords and sources are all in YAML files under `config/`, so they can be changed without touching the code.
 
-Outbreak words such as "outbreak", "surge in cases", "cluster", "suspected cases" and "deaths" are **not** disease keywords. They are relevance cues in `config/relevance.yaml`, looked for only in sentences that already name a configured disease. So they decide *whether* an article about a disease reports an outbreak, but never cause an article to be collected on their own.
-
-**Kept for verification**, for every article:
-- the source URL (canonical, plus the listing link);
-- the headline and the extracted article text (or summary);
-- the publication date and where it came from;
-- the reported location (with the article's own words, the reasons and the confidence);
-- the disease tags with the exact keywords matched;
-- the relevance and event classification with its reasons.
-
-All of these appear in the dashboard's article register, which can be downloaded as CSV from the table's toolbar. Official records keep their IDSP unique ID, the weekly PDF's URL, and every column of the report.
-
-## Official sources
-
-| Source | What is available | Status |
-|---|---|---|
-| **NCDC: IDSP Weekly Outbreak Reports** (ncdc.mohfw.gov.in → "Weekly Outbreaks") | One PDF per week since 2009, with a table per outbreak: state, district, disease, cases, deaths, start and report dates, status, and action taken. About 48 outbreaks a week. The PDF tables can be parsed reliably | **Integrated** (`outbreak_monitor/official.py`, table `official_reports`, its own map layer and tab). Published about 2 months after the reporting week (week 34, 17–23 Aug 2026, was the latest on 27 Oct). The latest `weeks` reports (default 12) are kept |
-| NCDC announcements | Health advisories as PDFs (e.g. leptospirosis, monsoon) | Advisories, not outbreak reports; low value for the map |
-| IDSP (idsp.mohfw.gov.in) | Site not reachable (connection timeout) | Reports now appear on NCDC |
-| MoHFW (mohfw.gov.in) | Pages are built in the browser with JavaScript; no feed or machine-readable listing | Not accessible without a full browser |
-| PIB press releases (pib.gov.in RSS) | RSS works, but it returns Hindi releases from all ministries, whatever language parameter is used | Not useful yet; an English health-ministry feed was not found |
-| State health departments (e.g. Kerala DHS) | Advisories and bulletins as PDFs, partly in regional languages; formats vary by state | Case by case; no common machine-readable format |
-
-**How the IDSP reports are read.** Each run lists the weekly PDFs on the NCDC page and reads only those not stored yet (robots.txt is respected; one request per second).
-- `pdfplumber` extracts the tables. Every outbreak starts at its unique ID (e.g. `AS/BAJ/2026/34/1369`); text that wraps over several lines or pages is joined back to that record.
-- Columns are mapped by their header text, per table, since the main table and the "reported late" table differ.
-- Dates and status are read by their content, since narrow layouts push them into neighbouring columns. A date whose year was cut off by a page break takes the year from the report ID.
-- A row whose state, district and disease moved one column is repaired from what the values are (a state name in the disease column, a disease appended to the district).
-- States and districts are matched against the GeoNames reference data: exact names, then spelling variants (no partial matches, so "Balodabazar" never becomes "Balod"). Unknown districts are mapped at the state centre.
-- Diseases are mapped to the configured diseases from the report's disease column only, never from the comment (which also names diseases that were ruled out). Other diseases (chickenpox, mumps, GBS…) are kept under their reported name.
-- Values are stored as printed: a few reports list a start date after the reporting date, or a comment that describes another district. These are errors in the source PDFs and are not "corrected".
-
-Checked on six weekly reports (245 outbreaks, 2025–2026): 244 complete (one has its status cut off by a page break and is left empty, not guessed), 243 located to the district, 1 at state level, and 1 not located (a row where the PDF merges two outbreaks without a second ID; it is kept, but not mapped).
-
-## Setup (Windows)
+## Quick start (Windows)
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+python -m outbreak_monitor.collector     # first run collects the last 45 days (takes a while)
+streamlit run app.py                     # dashboard at http://localhost:8501
 ```
 
-## Setup with Docker
+Other useful commands:
 
 ```powershell
-docker compose up --build        # dashboard at http://localhost:8501 + collection every 30 minutes
-docker compose down              # stop (the database stays in the "outbreak-data" volume)
+python -m outbreak_monitor.scheduler              # collect now and then every 30 minutes (Ctrl+C to stop)
+python -m outbreak_monitor.collector --backfill   # re-read every source in depth over the last 45 days
+python -m outbreak_monitor.official               # fetch only the official IDSP reports
+python -m outbreak_monitor.reprocess              # re-classify and re-locate all stored articles
+python -m outbreak_monitor.export_samples         # write sample records and the schema to samples/
+python -m evaluation.evaluate                     # accuracy against the labelled articles
+python -m evaluation.location_eval                # location accuracy on a second labelled set
+python -m evaluation.recall_check                 # compare coverage with Bing News (evaluation only)
+python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
+pytest                                            # tests
 ```
 
-- Two services from one image: `dashboard` (Streamlit) and `collector` (the scheduler). They share the database in the `outbreak-data` volume.
-- `config/` is mounted read-only, so keywords and sources can be changed without rebuilding; changes apply from the next run.
-- The dashboard port is published to this computer only (`127.0.0.1:8501`).
-- Run other commands inside the container, e.g. `docker compose exec collector python -m outbreak_monitor.collector --backfill` or `docker compose run --rm collector pytest`.
-- The Docker files have not been built on the development machine yet (Docker is not installed there).
-
-## Usage
+### With Docker
 
 ```powershell
-streamlit run app.py                              # dashboard at http://localhost:8501
-python -m outbreak_monitor.collector              # one collection run (news, then official reports)
-python -m outbreak_monitor.official               # official reports only
-python -m outbreak_monitor.collector --backfill   # force an in-depth read of every listing over lookback_days
-python -m outbreak_monitor.scheduler              # run now, then every refresh_interval_minutes (Ctrl+C to stop)
-python -m outbreak_monitor.reprocess              # re-tag, re-classify and re-locate all stored articles (normally automatic)
-python -m outbreak_monitor.gazetteer              # rebuild reference/ place data from GeoNames (rarely needed)
-python -m evaluation.recall_check                 # coverage check against Bing News (evaluation only)
-python -m evaluation.location_eval                # location accuracy on the labelled sample
-python -m evaluation.evaluate                     # relevance, event, disease and location scores (120 labelled articles)
-python -m outbreak_monitor.export_samples         # sample records + database schema to samples/
-pytest                                            # run tests
+docker compose up --build     # dashboard at http://localhost:8501, collection every 30 minutes
+docker compose down           # stop; the database is kept in the "outbreak-data" volume
 ```
 
-## What each run reads
+This starts two containers from the same image: the dashboard and the scheduled collector, sharing one database. The `config/` folder is mounted, so keyword and source changes don't need a rebuild. The port is only open to the local machine. Commands can be run inside a container, for example `docker compose exec collector python -m outbreak_monitor.collector --backfill`.
 
-Every run reads RSS feeds, news sitemaps (the last ~48 hours) and **page 1** of each keyword page. Some listings are also read **in depth**: archive sitemaps back to a cutoff date, and keyword pages up to `backfill_max_pages` pages. The run's mode depends on which listings are read in depth:
+The Docker setup has not been tested on a machine with Docker yet.
 
-| Mode | When | Read in depth | Back to |
-|---|---|---|---|
-| **backfill** | a listing has never been read in depth: first run, a newly added source or search term, an archive that failed before; or `--backfill` | those listings (all of them with `--backfill`) | `lookback_days` (45 days) |
-| **catch-up** | the last successful run is more than 36 hours old (e.g. the machine was off), so the 48-hour news sitemaps no longer cover the gap | all archives and keyword pages | the last successful run, minus 12 hours |
-| **incremental** | otherwise (normal scheduled runs) | nothing | — |
+## Diseases monitored
 
-The status of each listing (last success, last in-depth read, last error) is kept in the `listing_status` table. This is how a failed archive is retried automatically, and how a newly added source or search term is backfilled without any manual step.
+19 diseases in 5 groups, each with alternative names and spellings in `config/diseases.yaml`:
 
-## How collection works
+| Group | Diseases |
+|---|---|
+| Vector-borne | Dengue, Malaria, Chikungunya, Japanese Encephalitis / AES (incl. "brain fever", "chamki bukhar", Chandipura) |
+| Water- and food-borne | Cholera, Acute Diarrhoeal Disease (incl. gastroenteritis, food poisoning), Typhoid, Hepatitis A / E (incl. jaundice outbreaks) |
+| Emerging and zoonotic | Nipah, Leptospirosis ("rat fever"), Scrub Typhus, Kyasanur Forest Disease ("monkey fever"), Rabies, other zoonotic outbreaks (bird flu, anthrax, brucellosis, plague, CCHF, mpox) |
+| Respiratory and vaccine-preventable | Influenza (H1N1, H3N2, swine flu), COVID-19, Measles (incl. rubella), Diphtheria |
+| Other epidemic-prone | Unexplained fever, deaths or clusters ("mystery fever", "unknown disease"…) |
 
-Each source is handled by its own worker, in parallel. Each worker only contacts its own site. Each run has these steps:
+Words like "outbreak", "surge in cases", "cluster", "suspected cases" or "deaths" are not used to collect articles. They only help decide whether an article that already names a disease is reporting an outbreak.
 
-1. **Discovery.** Reads the listings described above. Only links on the source's own domain, and (for sitemaps and keyword pages) only article URLs matching `article_pattern`, are kept.
-2. **Pre-filter.** Skips links already stored or rejected, and items published before `lookback_days`. RSS and sitemap items must contain a disease keyword in the headline, summary, the publisher's sitemap keywords or the URL. These fields are only used to *find* candidates. Links from keyword pages always continue.
-3. **Extraction.** Downloads each remaining article page, if robots.txt allows it, and extracts the text, canonical URL, title and date with Trafilatura.
-4. **Store.** Each source is stored as soon as its worker finishes:
-   - **Headline:** the page title for keyword-page and archive links, otherwise the listing headline. Site suffixes such as "| Pune News - The Times of India" are removed.
-   - **Disease tags:** taken **only from the headline and the article text** (or the RSS summary if there is no text). `matched_keywords` records exactly which keywords matched and where, e.g. `{"Dengue": {"headline": ["dengue"], "text": ["dengue cases"]}}`. An article with no configured keyword in its headline or text is not stored.
-   - **Date:** the listing's date (`date_source = listing`), otherwise the date on the page (`date_source = page`). All dates are UTC.
-   - **Duplicates are not stored:**
-     - a known canonical URL;
-     - an identical text fingerprint (e.g. the same wire story on two URLs);
-     - a headline from the **same source** that is ≥95% similar, has **the same figures**, and was published within 3 days.
+Some keywords are deliberately narrow. Plain "jaundice" also matched articles about liver disease and newborn care, so only phrases like "jaundice cases" or "jaundice outbreak" count. Plain "plague" mostly appeared as a figure of speech, so only "bubonic plague", "plague cases" and similar are used.
 
-     A daily update such as "cases rise to 48" is therefore new, not a duplicate of "cases rise to 40".
-   - **Same story, other publisher:** a ≥90% similar headline with the same figures, published within 3 days, is stored but given the same `story_id`. The map can then show one marker listing every source.
-   - **Classification:** see the next section.
+## Sources
 
-**Download failures.**
+### News sites
 
-| Problem | `extraction_status` | What happens |
+The collector uses four ways of finding articles, and checks robots.txt before every request:
+
+| Method | What it is | When |
 |---|---|---|
-| Temporary (network error, timeout, HTTP 429/5xx, robots.txt unreadable) | `failed` | Retried in the next runs, up to 3 attempts. After that, the article is stored with its listing data only if its headline contains a keyword. |
-| Permanent (robots.txt disallows the page) | `blocked` | The article is stored with its listing data if its headline or summary contains a keyword. |
-| Permanent (HTTP 403/404) | `unavailable` | As above. |
+| RSS | Feeds the publisher provides for automated reading | every run |
+| News sitemap | XML listing every article from the last ~48 hours | every run |
+| Archive sitemap | Daily, weekly or monthly lists of all articles (URLs only) | when catching up |
+| Topic page | The site's own page for a disease, e.g. `/topic/dengue` | first page every run, more when catching up |
 
-**Reliability.**
-- Requests are retried up to 3 times with exponential backoff.
-- Each response may take at most 60 s in total. Responses slower than 10 s are logged.
-- At most one request per second goes to any single site (thread-safe).
-- robots.txt is re-read daily. If it can't be read, it is retried after 10 minutes.
-- If one file of a sitemap index fails, the other files are still used.
-- An error on one article is logged and the run continues.
-- SQLite waits up to 30 s for a lock held by another process.
+| Source | RSS | News sitemap | Archive | Topic pages | Notes |
+|---|---|---|---|---|---|
+| The Hindu | 26 feeds (national, health, states, cities) | ✓ | — | — | Topic pages redirect and search is disallowed by robots.txt |
+| Times of India | India | ✓ | weekly | `/topic/{term}/news` | Topic pages only show more articles with JavaScript |
+| The Indian Express | India, Health | ✓ | daily | `/about/{term}/` | |
+| Hindustan Times | India, Health | ✓ | monthly | `/topic/{term}/news/page-{n}` | |
+| NDTV | 5 feeds | — | — | — | Sitemaps and topic pages return 403 |
+| India Today | home, India | ✓ | — | — | |
+| News18 | India | ✓ | — | `/topics/{term}/page-{n}/` | |
+| Deccan Chronicle | All news | ✓ | — | `/tags/{term}` | |
+| Scroll | All articles | ✓ | — | `/topic/{term}` | |
+| ET HealthWorld | Top stories | ✓ | monthly | `/tag/{term}/{n}` | |
 
-**Configuration changes.** The run records a fingerprint of `config/diseases.yaml`, `config/relevance.yaml`, `config/locations.yaml` and the reference place data. If any of them changes, the next run automatically:
-- re-tags, re-classifies and re-locates every stored article (articles whose keywords were removed become `content_type = no_keyword`);
-- re-checks links that were rejected for having no keyword;
-- backfills new search terms.
+Sources can be added, paused (`enabled: false`) or removed in `config/sources.yaml`. A new source is backfilled automatically on the next run.
 
-**Monitoring.** Each run is recorded in `collection_runs`: mode, times, status (`success`, `partial` or `failed`), counts, failed URLs and the config fingerprint. This table also gives the last successful refresh time. Logs go to the console and to `data/logs/collector.log` (rotating, 5 MB × 3).
+### Official reports (NCDC / IDSP)
 
-## Relevance and event classification
+NCDC publishes a PDF every week listing each outbreak reported by the states through IDSP: state, district, disease, cases, deaths, dates, status and the action taken. These are read automatically and kept in their own table (`official_reports`). The reports appear about two months after the week they cover, and the latest 12 weeks are kept.
 
-Every stored article is classified when it is collected. The classifier is rule-based and explainable: it uses spaCy sentence splitting, regular expressions and the cue words in `config/relevance.yaml`, and no paid API or language model.
+Reading these PDFs reliably took some care:
+- each outbreak starts at its unique ID (e.g. `AS/BAJ/2026/34/1369`), and text that wraps across lines or pages is joined back to it;
+- columns are matched by their header text, because the tables don't all have the same layout;
+- dates and status are recognised by their content, since narrow columns sometimes push them into the next column;
+- if state, district and disease have shifted by one column, they are put back using the place names;
+- diseases are taken only from the disease column, never from the comments, which often mention diseases that were ruled out.
 
-1. **Which diseases are central?** A disease is central if it appears in the headline, or in 3 or more sentences, or in the lead (the first 3 sentences) and 2 or more sentences. If no disease is central, the article is a `passing_mention`.
-2. **What do the sentences that mention a central disease say?** Cues are only looked for in these sentences, so a passing remark elsewhere in the article doesn't count. The classifier looks for:
-   - **case counts**, e.g. "40 new cases", "87 jawans hospitalised", "tally rises to 70", "cases jump 31%". Years and names such as "COVID-19" or "H1N1" are not counted.
-   - **event cues**, e.g. outbreak, deaths, surge, confirmed
-   - **response cues**, e.g. fogging, surveillance, alert, drive
-3. **What kind of article is it?** The headline is checked first.
+Values are kept as printed, including a few obvious errors in the source PDFs. Where a value is cut off by a page break, the field is left empty rather than guessed. On a check of six weekly reports (245 outbreaks), 244 records were complete and 243 were located to the right district.
 
-| `content_type` | Meaning | `relevance` |
+Other official sources were looked at but not used: the MoHFW site needs a full browser, the IDSP site doesn't respond, PIB's feed mixes all ministries and is mostly in Hindi, and state health department bulletins differ too much from state to state.
+
+## How it works
+
+### Collection
+
+Each site is handled by its own worker so a slow site doesn't hold up the others. A run:
+
+1. reads the site's feeds, sitemaps and topic pages, keeping only links on that site that look like articles;
+2. skips links it has already seen, items older than 45 days, and feed or sitemap items without a disease keyword in the title, summary or URL;
+3. downloads each remaining article (if robots.txt allows) and extracts the text, canonical URL and date with Trafilatura;
+4. stores it, unless it is a duplicate.
+
+Normally a run only needs the feeds and the 48-hour sitemaps. If the computer was off for more than 36 hours, the next run catches up automatically by reading the archives and topic pages back to the last successful run. A newly added source or search term is backfilled over 45 days the same way.
+
+**Duplicates.** An article isn't stored again if its canonical URL is known, if its text is identical to a stored one, or if the same site has published an almost identical headline with the same numbers within 3 days. "Cases rise to 48" is therefore treated as a new update, not a copy of "cases rise to 40". The same story from different publishers is stored for each one but grouped under one `story_id`, so the map shows a single marker listing all sources.
+
+**When things go wrong.** Requests are retried with backoff, each site gets at most one request per second, and no response may take longer than 60 seconds. Failed downloads are retried in later runs (up to three times). One broken page or site never stops the run. Each run is logged in the `collection_runs` table with its counts and errors, and in `data/logs/collector.log`.
+
+**Disease tags** come only from the headline and the article text. For every article the exact keywords that matched are saved, e.g. `{"Dengue": {"headline": ["dengue"], "text": ["dengue cases"]}}`.
+
+When `config/diseases.yaml`, `config/relevance.yaml` or `config/locations.yaml` changes, the next run re-tags, re-classifies and re-locates all stored articles, and searches the sites for any new terms.
+
+### Relevance and event type
+
+The classifier is rule-based, so every decision comes with a reason (stored in `relevance_reasons`). It uses spaCy to split sentences and the cue words in `config/relevance.yaml`.
+
+- A disease counts as the article's subject if it's in the headline, in three or more sentences, or early in the article and mentioned again.
+- Only sentences about that disease are checked for case counts ("40 new cases", "87 jawans hospitalised", "tally rises to 70"), outbreak words (outbreak, deaths, surge, suspected) and response words (fogging, alert, surveillance drive).
+- The headline is checked first for research, awareness and explainer pieces, crime stories, and stories about past events such as COVID compensation.
+- A disease mentioned only as a comparison ("Ebola is like Covid") doesn't count.
+
+| Type | Meaning | Relevant? |
 |---|---|---|
-| `outbreak_report` | cases, deaths or an outbreak are reported | relevant |
-| `public_health_response` | a response to disease in an area (fogging, alerts, drives, preparedness) | relevant |
-| `research` | studies, vaccines, drugs, trials | irrelevant |
-| `awareness` | explainers, tips, symptoms; question headlines without a response cue | irrelevant |
-| `passing_mention` | no disease is central | irrelevant |
-| `other` | central but no event or response, or an excluded URL section (sports, entertainment, opinion…) | irrelevant |
-| `no_keyword` | after a keyword change, the article no longer contains any configured keyword | irrelevant |
+| `outbreak_report` | cases, deaths or an outbreak are reported | yes |
+| `public_health_response` | a response to disease in an area: fogging, alerts, drives | yes |
+| `research` | studies, vaccines, drugs | no |
+| `awareness` | explainers, tips, symptoms | no |
+| `passing_mention` | the disease is not what the article is about | no |
+| `other` | none of the above, crime, past events, or sections like sport and entertainment | no |
 
-4. **What is the event status?** For relevant articles only:
-   - `historical`: the headline points to the past (e.g. "years ago", or a past year) and the lead doesn't mark the report as current
-   - `suspected`: "suspected"/"probable" appears in the headline, or in the event sentences when no case counts are given
-   - `new`: a current report with cases
-   - `unclear`: a response with no case report
+Relevant articles also get an event status: **new** (current cases reported), **suspected**, **historical** (clearly about the past) or **unclear** (a response without a case report).
 
-The classifier also stores `relevant_diseases` (the diseases the event is about) and `relevance_reasons` (why it decided, e.g. `"Dengue event: '12 new dengue cases'"`).
+A person's review in the dashboard (`relevance_status`: pending, relevant or irrelevant) always overrides the automatic result and is never changed by the code.
 
-**Manual review.** `relevance_status` (`pending`, `relevant` or `irrelevant`) is reserved for a person to set and is never changed by the classifier, including when articles are re-classified. The interface for setting it will come with the dashboard.
+### Location
 
-**Outbreaks abroad** (e.g. US measles) are classified as outbreak reports. Keeping only events in India is handled by location extraction in the next phase.
+Each article is placed at the most specific level it supports: state, district or town. A report that only names a district is mapped at the district, and no more precise point is invented.
 
-## Outbreak location
+- Place names are found with spaCy and matched against reference data built from [GeoNames](https://www.geonames.org): all 36 states and UTs, 763 districts and about 6,600 towns, with spelling variants (Gurgaon/Gurugram, Trichy/Tiruchirappalli) and abbreviations like "TN" or "J&K".
+- Mentions are weighted: a place in the headline counts most, then places in sentences about the outbreak.
+- The dateline ("PUNE:") and bylines are ignored, unless the outbreak is clearly reported there. Places named only as the lab that tested samples, or as part of a hospital's name, are down-weighted.
+- Ambiguous names (Aurangabad in Bihar or Maharashtra) are resolved using the state the article mentions. If that's not possible, the location is flagged for review.
+- Articles about outbreaks abroad are recognised and kept off the map.
+- Villages that aren't in the reference data are looked up with OpenStreetMap Nominatim, but only for relevant articles. The result must lie in the same state. There is at most one request per second, and every answer is cached.
 
-Every article gets the most specific outbreak location **the article supports**: state/UT → district → locality, with coordinates for map display. The code is in `outbreak_monitor/location.py`.
-
-**Reference data** (`reference/`, built from [GeoNames](https://www.geonames.org), CC BY 4.0):
-- `india_places.csv`: all 36 states/UTs, 763 districts and 6,584 towns with 5,000+ people. Each has coordinates and alternative spellings (Gurgaon → Gurugram, Calicut → Kozhikode, Trichy → Tiruchirappalli).
-- `foreign_places.csv`: countries, capitals and first-level regions of all other countries.
-
-`config/locations.yaml` adds headline abbreviations ("TN", "UP", "J&K"), extra spellings, display names and the geocoding settings.
-
-**How a location is chosen**
-1. **Find place mentions.** spaCy named-entity recognition (GPE/LOC) runs first, then matching against the reference data.
-   - These are ignored: lower-case words, generic words ("East", "City"), and names that are part of a person's name.
-   - A small town found only by the dictionary must also look like a place ("in X", "X village", or tagged by spaCy). This stops headline words such as "Bed" matching a town.
-2. **Weigh each mention by where it appears:** headline 3; a sentence that mentions the article's disease 2 (3 in the first sentences); other lead sentences 1; elsewhere 0.5.
-3. **Leave out places that are not the outbreak location:**
-   - The **dateline** ("PUNE:", "Mumbai, Oct 20 (PTI) –") and **bylines** weigh 0. This is the publisher's or author's location.
-   - Places named right after a **laboratory or institute** ("samples sent to NIHSAD, Bhopal") are down-weighted.
-   - So are places inside a **hospital or college** name ("Coimbatore Medical College Hospital").
-   - The dateline does count when the article reports the outbreak there: the outbreak sentences name no other place and say "in the city" / "here", or keep naming that place.
-4. **Resolve ambiguous names** (Aurangabad: Bihar or Maharashtra), in this order:
-   - the state the article names;
-   - the higher administrative level (a district or state beats a same-name town elsewhere);
-   - a clearly larger population (flagged for review);
-   - otherwise unresolved.
-
-   A small-town match in a sentence that names a district in another state is treated as a local village. A foreign country, capital or region (Dhaka, Pennsylvania) beats a same-name small Indian town.
-5. **Decide the country.** If a foreign place named in the headline or outbreak sentences outweighs India, the article is `outside_india` (country = that country), and it is not mapped.
-6. **Choose the level.**
-   - **State:** the best-supported state.
-   - **District:** the headline's district, or the single district the outbreak sentences point to. When the headline names both a state and a district, a district written as the event's place ("outbreak in Mon's Tizit") or named first wins.
-   - **State-level instead of a district:** if the headline names only the state, or the outbreak sentences cover 3 or more districts.
-   - **Locality:** a town in that district named in the outbreak sentences, or a village looked up with Nominatim (below).
-7. **Coordinates** are those of the chosen level. A district-level report gets the district's coordinates; nothing more precise is invented.
-
-**Geocoding** (geopy + [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/), data © OpenStreetMap contributors, ODbL):
-- **When:** only for relevant articles, and only for a place named in the headline or outbreak sentences, written like a place ("in Kothrud", "Tizit village"), and missing from the reference data. Names with digits, codes, months or disease names are never sent.
-- **Query:** "name, district, state, India". The answer must be a settlement, neighbourhood or administrative area (not a street or clinic) **in the same state**.
-- **Usage policy:** at most 1 request per second, an identifying User-Agent, and every answer cached in the `geocode_cache` table, including "not found". Temporary failures are not cached.
-
-**Stored per article:**
-- `country`, `state`, `district`, `locality`, `latitude`, `longitude`
-- `location_level` (state / district / locality / country)
-- `location_text`: the article's own words for the place
-- `location_confidence` (high / medium / low)
-- `location_review` (true when a person should check it)
-- `location_source` (reference / nominatim)
-- `location_reasons`: why it was chosen
-- `location_candidates`: every Indian place considered, with its weight
-
-**Review flags** are set for:
-- an ambiguous name in the headline;
-- several states reported with similar weight;
-- a spelling-variant or population-based match;
-- a place not named in the headline or outbreak sentences;
-- no location found.
-
-**Accuracy** on the labelled sample in `evaluation/location_labels.csv` (60 relevant articles; AI-assisted labels, spot-checked by the project owner): **state/UT 95%, district level 92%**. Run `python -m evaluation.location_eval` to recompute.
-
-## Evaluation
-
-[`evaluation/REPORT.md`](evaluation/REPORT.md) is the evaluation report. On 120 randomly sampled articles: relevance precision 83%, recall 93% (F1 0.88; recall 95% after fixing one bug the evaluation found); event status 96%; state 98%, district level 82%. The labels (`evaluation/labels.csv`) are AI-assisted and still to be verified by a person; the report lists every disagreement and the recommended fixes. `python -m evaluation.evaluate` recomputes everything and writes `evaluation/results.md`.
-
-## Sample records
-
-`samples/` holds 25 articles (metadata only: headline, URL, dates, keywords, classification and location; the article text is the publishers' and is not included), 25 official IDSP records, and `schema.sql` (the database schema). Regenerate with `python -m outbreak_monitor.export_samples`.
-
-## Demonstration (about 10 minutes)
-
-1. `streamlit run app.py` (or `docker compose up`) and open http://localhost:8501.
-2. **Map:** India only, one marker per story, colours by event status; green squares are official IDSP records. Click a marker: disease, headline, place, date, and links to every source.
-3. **Filters:** choose the disease group "Vector-borne", then the state "Maharashtra"; the map, counts and lists follow. Use *Zoom to district*.
-4. **Article register:** sort by date, open an original article, mark one article irrelevant under *Your review* and save: it leaves the map.
-5. **Official reports tab:** the same outbreaks from IDSP, with a link to each weekly PDF.
-6. **Configuration:** add a keyword in `config/diseases.yaml` (e.g. a new local name), press *Refresh now*: stored articles are re-classified and new ones collected with the new keyword.
-7. **Evaluation:** show `evaluation/REPORT.md`.
-
-Close with the caveat on the page: this is a news-based monitoring tool, not an official surveillance system; article counts are not case counts.
+Each article stores the place in its own words, the level, a confidence (high/medium/low), a review flag, and the reasons for the choice.
 
 ## Dashboard
 
-`streamlit run app.py` opens the dashboard at http://localhost:8501. It is built with Streamlit, Folium (Leaflet) and streamlit-folium. The page is in `app.py`; the data logic is in `outbreak_monitor/dashboard_data.py`.
+`streamlit run app.py` opens it at http://localhost:8501.
 
-**Sidebar**
-- **Show:**
-  - *Relevant outbreak reports* (default);
-  - *Relevant, location needs review*;
-  - *All collected articles*.
-- **Filters:**
-  - disease group (choosing a group without a disease means every disease in it) and disease;
-  - state/UT, source, and publication date (default: the lookback window);
-  - "include reports outside India" (these appear in the list only);
-  - "show official IDSP reports" (the disease and state filters apply to them; the date filter does not, since they are published about two months late).
-- **Refresh now:** runs a collection immediately. The scheduler keeps running separately.
+- **Map** of India only (the official boundary; everything outside India is masked). There is one marker per story, coloured by event status, and nearby markers group together when zoomed out. Clicking a marker shows the disease, headline, location, date and links to every source that reported it. Official IDSP records appear as green squares on their own layer.
+- **Filters** in the sidebar: disease group, disease, state, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
+- **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
+- **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
+- **Article register** lists every matching article with its location, confidence, event status and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
+- **Official reports** tab: every IDSP record with all its fields and a link to the weekly PDF.
+- **Refresh now** runs a collection straight away.
 
-**Look:** a classic "atlas" style. Theme colours, fonts and borders are set in `.streamlit/config.toml`, the small extra CSS is at the top of `app.py`. The palette is ivory and parchment, with navy accents, serif headings (Georgia) and a sans-serif body.
+The dashboard only listens on `localhost`, because it can save reviews and start collection runs. Put it behind a login before opening it to a network.
 
-**Key figures:** matching articles, stories on the map, distinct reported locations, and the last successful refresh (IST).
+## Evaluation
 
-**Map** (India in focus, markers only, no heatmap):
-- **One marker per story.** The same report from several publishers shares a marker, and its popup lists every source.
-- **Marker colour = event status:** crimson = new, amber = suspected, grey = historical, steel blue = unclear. An on-map legend gives the labels, and popups always state the status in text too.
-- **Popup:** a card with disease and event status, headline, reported location (with level, confidence and any review flag), publication date (IST), and links to each source's original article.
-- **India only:** everything outside India's official boundary is covered in the page colour, and India is outlined in navy. Panning is limited to India, and fractional zoom lets India fill the frame.
-  - The boundary is `reference/india_boundary.geojson`: the official boundary of India as per the Survey of India, including all of Jammu & Kashmir and Ladakh, compiled by the [DataMeet India community](https://github.com/datameet/maps/tree/master/Country) (`india-composite.geojson`, CC0).
-  - It is simplified to about 1 km (85 KB). `python -m outbreak_monitor.gazetteer` rebuilds it.
-- **Basemap:** OpenStreetMap tiles. "Classic (muted)" is the default (toned down with CSS); "Street map (full colour)" is available from the layer button. There is also a fullscreen button. CARTO's light basemap now needs an API key, so it is not used.
+The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 articles were picked at random from the database and labelled by reading them (`evaluation/labels.csv`). The system's results were then compared with the labels:
 
-**Beside the map:** the four latest reports as cards, and "Most reported states". These are story counts, labelled as not being case numbers.
-- **Placement:** markers sit at the coordinates of the level the article supports (district centre, state centre, or locality). Nearby markers cluster when zoomed out.
-- **Zoom:** the map zooms to the filtered results; *Zoom to district* goes straight to a district.
-- Reports outside India are never mapped.
-- **Official reports** are green squares at the district centre (a separate layer in the layer button). Their popup gives disease, cases and deaths, dates, status, the IDSP ID and a link to the weekly PDF.
-
-**Official reports** (second tab) lists every matching IDSP record with all its columns and a link to the PDF.
-
-**Article register** (first tab below the map; the third tab, "About the data", summarises the method and attributions) shows every matching article: date, headline, disease, reported location, level, confidence, a ⚠️ review flag, event status, type, source, and a link to the original. The **Your review** column sets `relevance_status` (pending / relevant / irrelevant); save with *Save review changes*. A review decision overrides the automatic classification everywhere in the dashboard and is never changed by the code.
-
-**Access:** `.streamlit/config.toml` restricts the server to `localhost`, because the page can save reviews and start collection runs. Expose it on a network only behind proper access control. The Streamlit "Deploy" button is hidden.
-
-The article count is not a measure of disease incidence or outbreak severity; the page says so at the top.
-
-## Data model and migration
-
-SQLite (`data/outbreaks.db`) is used for the prototype, through SQLAlchemy with portable column types (no SQLite-specific SQL).
-
-**The document's fields** (all in the `articles` table):
-
-| Field | Column(s) |
+| | Result |
 |---|---|
-| article_id | `article_id` (primary key) |
-| headline | `headline` |
-| source_name | `source_name` |
-| article_url | `article_url` (canonical, unique); `link_url` is the link as listed |
-| published_at / collected_at | `published_at` (UTC, with `date_source`), `collected_at` (UTC) |
-| article_text or excerpt | `article_text`, `excerpt` |
-| disease_tags | `disease_tags` (+ `matched_keywords`, `relevant_diseases`) |
-| state / district / locality | `state`, `district`, `locality` (+ `country`, `location_level`, `location_text`) |
-| latitude / longitude | `latitude`, `longitude` |
-| location_confidence | `location_confidence` (+ `location_review`, `location_reasons`) |
-| relevance_status | `relevance_status` (manual review: pending / relevant / irrelevant; the automatic result is in `relevance`) |
-| event_status | `event_status` (new / suspected / historical / unclear) |
+| Relevance: precision / recall / F1 | 83% / 93% / 0.88 |
+| Event status | 96% |
+| Disease (at least one correct / all correct) | 100% / 81% |
+| State / district | 98% / 82% |
 
-**Official records** are in `official_reports` (one row per IDSP unique ID): `report_id`, `source_name`, `report_url`, `report_year`, `report_week`, `state`, `district`, `disease_raw` (as printed), `diseases` (configured diseases it maps to), `cases`, `deaths`, `onset_date`, `reported_date`, `status`, `action_taken`, `latitude`, `longitude`, `location_level`, `location_confidence`.
+A second set of 60 articles, labelled for location only, gives 95% for state and 92% for district. Most of the false positives are dengue or rabies drives with no case numbers, which may or may not count as relevant depending on how strict you want to be. The report lists every disagreement.
 
-**Moving to PostgreSQL/PostGIS:**
-1. Install a driver (`pip install "psycopg[binary]"`).
-2. Set `OUTBREAK_DB_URL=postgresql+psycopg://user:password@host/dbname`. Every command and the dashboard then use it, and the tables are created automatically.
-3. To copy existing data, read each table from SQLite and insert it into PostgreSQL. The column types (text, integer, float, boolean, timestamp, JSON) map directly.
-4. **For PostGIS (optional):** run `CREATE EXTENSION postgis;`, then `ALTER TABLE articles ADD COLUMN geom geometry(Point, 4326);` and `UPDATE articles SET geom = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326);`. This enables spatial queries such as "reports within 50 km" or joins with district boundaries.
+The labels were made with AI assistance and still need to be checked by a person. After checking them, run `python -m evaluation.evaluate` to get the final numbers.
+
+## Data
+
+The data is stored in SQLite (`data/outbreaks.db`) through SQLAlchemy, using portable column types so it can move to PostgreSQL later.
+
+| Table | What's in it |
+|---|---|
+| `articles` | headline, source, URLs, publication and collection time, text, disease tags and matched keywords, classification and reasons, story ID, review status, and location (country, state, district, locality, coordinates, level, confidence, review flag, reasons) |
+| `official_reports` | one row per IDSP outbreak: ID, report week and PDF link, state, district, disease (as printed and mapped), cases, deaths, dates, status, action taken, coordinates |
+| `seen_links` | links checked but not stored (no keyword, too old, duplicate, failed download) |
+| `listing_status` | when each feed, sitemap or topic page was last read, and its last error |
+| `geocode_cache` | Nominatim answers, so each place is looked up only once |
+| `collection_runs` | one row per run: mode, times, status, counts and errors |
+
+New columns are added to an existing database automatically. `samples/` has 25 example articles (metadata only, without the publishers' text), 25 official records and the full schema (`schema.sql`).
+
+To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and set `OUTBREAK_DB_URL=postgresql+psycopg://user:password@host/dbname`. The tables are created on first use. For spatial queries, PostGIS can add a point column built from `latitude` and `longitude`.
 
 ## Configuration
 
-Changing any of these files needs no code changes. Edits take effect from the next run.
+| File | What it controls |
+|---|---|
+| `config/diseases.yaml` | diseases, their group, keywords and search terms; lookback period (45 days) and refresh interval (30 minutes) |
+| `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
+| `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
+| `config/sources.yaml` | news sites and how to read them, plus the official report series |
 
-- **`config/diseases.yaml`** contains:
-  - `category`: the disease group, used for the dashboard's "Disease group" filter.
-  - `keywords`: phrases that mark an article as being about each disease. Matching is whole-word and case-insensitive.
-  - `search_terms`: the terms used to open each site's topic or search page.
-  - `settings`: `lookback_days`, `refresh_interval_minutes`, `backfill_max_pages` and `country`.
-- **`config/relevance.yaml`** holds the cue words for relevance and event classification; headline words that rule an article out (crime, e.g. a "food poisoning" that turns out to be murder; past events such as "Covid ex gratia"); comparison words ("like Covid" is not a Covid mention); and the URL sections to exclude.
-- **`config/locations.yaml`** holds place abbreviations and extra spellings, display names, and the geocoding settings (enable/disable, User-Agent, request delay).
-- **`config/sources.yaml`** lists each site with its `domain` and any of `rss`, `sitemaps`, `archive_sitemaps` (+ `archive_child_pattern`) and `keyword_pages` (+ `article_pattern`). To pause a source, set `enabled: false`. A newly added source is backfilled automatically. The file's header comments explain each field. Its `official_reports` section lists official report series (`listing`, `weeks` to keep, `enabled`).
+Changes take effect on the next run. Stored articles are re-classified automatically.
 
-## Sources and collection methods
+## Responsible use
 
-There are four collection methods. robots.txt is checked before every request.
+- Only what sites publish for machines (feeds and the sitemaps listed in robots.txt) and public topic pages are read.
+- robots.txt is respected, there is at most one request per second per site, and the collector identifies itself with a User-Agent.
+- There are no logins, no paywall workarounds and no full-site crawling.
+- Article text is stored only for matching and classification and is never shown. The dashboard shows the headline, source and date, and links to the original.
 
-| Method | Tools | What it is | Used in |
-|---|---|---|---|
-| **RSS** | requests, feedparser | Feeds the publisher provides for automated reading, e.g. section, city and state feeds | every run |
-| **News sitemap** | requests, BeautifulSoup4 (lxml) | XML for search crawlers: every article from the last ~48 hours, usually with headline, date and keywords | every run |
-| **Archive sitemap** | requests, BeautifulSoup4 (lxml) | Daily, weekly or monthly XML lists of all articles (URLs only, matched on the URL slug) | backfill / catch-up |
-| **Keyword page** (HTML) | requests, BeautifulSoup4 | The site's own topic, tag or search page for a disease term, e.g. `/topic/dengue`. It lists articles the publisher tagged with that disease | page 1 every run; more pages in backfill / catch-up |
+NCDC's copyright policy allows its content to be reused with the source clearly acknowledged; the dashboard names IDSP/NCDC and links every record to its PDF. The news sites' terms of use still need to be read and recorded here before the tool is shared more widely. Any site that doesn't allow automated reading should be disabled in `config/sources.yaml`.
 
-| Source | RSS | News sitemap | Archive sitemap | Keyword page | Notes |
-|---|---|---|---|---|---|
-| The Hindu | 26 (health, national, states, cities, 6 states, 16 cities) | ✓ | — | — | `/topic/` redirects to the home page; `/search/` disallowed by robots.txt; no archive, so backfill reaches back only as far as the feeds (3–6 days, longer for some state feeds) |
-| Times of India | India | today/yesterday (with titles) | weekly | `/topic/{term}/news` (1 page) | Topic pages load more articles with JavaScript only |
-| The Indian Express | India, Health | ✓ | daily | `/about/{term}/` (1 page) | as above |
-| Hindustan Times | India, Health | ✓ | monthly | `/topic/{term}/news/page-{n}` | Some links lack `https://`; these are handled |
-| NDTV | latest, India, cities, south, top | — | — | — | Sitemaps and topic pages return 403. The "latest" feed (~1 day) makes incremental runs complete, but there is no backfill beyond what the feeds hold |
-| India Today | home, India | ✓ | — | — | `/topic/` redirects to an index; no archive |
-| News18 | India | ✓ (+ yesterday) | — | `/topics/{term}/page-{n}/` | |
-| Deccan Chronicle | All (~500 items, ~2 days) | ✓ | — | `/tags/{term}` (1 page) | Replaced ThePrint, whose server repeatedly timed out. No archive, so backfill reaches back ~2 days plus the tag pages |
-| Scroll | All articles | ✓ | — | `/topic/{term}` (1 page) | |
-| ET HealthWorld | Top stories | 48-hour | monthly | `/tag/{term}/{n}` | |
-
-The collector does not log in, bypass paywalls or crawl whole sites.
-
-## Sources, usage and compliance
-
-**What the collector does with publishers' sites:**
-- It reads only what each site publishes for automated reading (RSS feeds, sitemaps listed in its robots.txt) or as public pages (topic, tag and search pages).
-- It checks robots.txt before every request (re-read daily).
-- It makes at most one request per second per site and identifies itself with a descriptive User-Agent.
-- It retries temporary errors with backoff and never retries 403/404.
-- It does not log in, bypass paywalls, or work around blocks. Sites or sections that refuse automated access are left out; see the notes in the sources table.
-
-**What is stored and shown:**
-- The full article text is stored only for internal processing (keyword matching, classification and location).
-- It is not republished. The dashboard will show the headline, source, date and short metadata, and link to the original article.
-
-**Terms of use** (review started 2 November 2026; not legal advice):
-- **NCDC** (official reports): its [Copyright Policy](https://ncdc.mohfw.gov.in/includes/Footer/Copyright_Policy.php) allows reproduction "partially or fully" with the source "duly & prominently" acknowledged (third-party material excluded). The dashboard names IDSP/NCDC and links every record to its weekly PDF. The site's policies say nothing about automated access or RSS.
-- **News sites:** their terms pages could not be read by an automated check (blocked or not found), so they must be read in a browser. Before production use or wider sharing, confirm for each one that automated reading of feeds/sitemaps and internal text processing are permitted, fill in the table, and set `enabled: false` for any source where they are not.
-
-| Source | Terms page checked (URL, date) | Automated access / RSS allowed? | Decision |
+| Source | Terms page (URL, date checked) | Automated access / RSS allowed? | Decision |
 |---|---|---|---|
 | The Hindu | | | |
 | Times of India | | | |
@@ -408,71 +247,57 @@ The collector does not log in, bypass paywalls or crawl whole sites.
 | Scroll | | | |
 | ET HealthWorld | | | |
 
-**External services and data:**
+Third-party data and services:
 
-| Dependency | Used for | Terms / attribution |
+| | Used for | Terms |
 |---|---|---|
-| Publishers' RSS feeds, sitemaps and pages | Article collection | Each publisher's terms (see above) |
-| [NCDC IDSP weekly outbreak reports](https://ncdc.mohfw.gov.in/) | Official outbreak records | Public Government of India reports; credited on the dashboard with a link to each PDF |
-| [GeoNames](https://www.geonames.org) | `reference/` place data (built once, kept in the repo) | CC BY 4.0. Attribution: GeoNames |
-| [DataMeet India boundaries](https://github.com/datameet/maps/tree/master/Country) | `reference/india_boundary.geojson`: the India-only map outline (official boundary as per the Survey of India) | CC0 (public domain); credited on the dashboard |
-| [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) via geopy | Locating villages and neighbourhoods | Usage policy: max 1 request/second, identifying User-Agent, results cached. Data © OpenStreetMap contributors, ODbL |
-| Bing News RSS | **Evaluation only** (`evaluation/recall_check.py`), never for collection | Microsoft/Bing terms |
-| OpenStreetMap standard tiles (via Folium/Leaflet) | Dashboard base map | [Tile usage policy](https://operations.osmfoundation.org/policies/tiles/): light, interactive use with attribution (shown on the map). For heavier or public use, switch to a commercial or self-hosted tile provider (one line in `app.py`) |
+| [GeoNames](https://www.geonames.org) | place reference data | CC BY 4.0 |
+| [DataMeet India maps](https://github.com/datameet/maps/tree/master/Country) | India's official boundary on the map | CC0 |
+| [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
+| [OpenStreetMap tiles](https://operations.osmfoundation.org/policies/tiles/) | base map | light use only; switch to a tile provider for heavier or public use (one line in `app.py`) |
+| [NCDC](https://ncdc.mohfw.gov.in/) | official outbreak reports | reuse with acknowledgement |
+| Bing News RSS | coverage check in `evaluation/` only, never for collection | Microsoft terms |
 
-## Database (SQLite, via SQLAlchemy)
+## Project layout
 
-| Table | Contents |
-|---|---|
-| `articles` | headline, source, canonical and listing URLs, collection method, publication time (+ `date_source`) and collection time, excerpt, article text, extraction status, content hash, `disease_tags` and `matched_keywords`, classification (`relevance`, `content_type`, `event_status`, `relevant_diseases`, `relevance_reasons`), `story_id`, manual review (`relevance_status`), and location (`country`, `state`, `district`, `locality`, `latitude`, `longitude`, `location_level`, `location_text`, `location_confidence`, `location_review`, `location_source`, `location_reasons`, `location_candidates`) |
-| `geocode_cache` | Nominatim answers per query ({} = not found), so each place is looked up once |
-| `seen_links` | links checked but not stored: `no_keyword`, `too_old`, `duplicate`, or `fetch_failed` (with `attempts`, retried up to 3 times) |
-| `listing_status` | per listing: last success, last in-depth read, last error |
-| `official_reports` | IDSP outbreak records (see [Data model](#data-model-and-migration)) |
-| `collection_runs` | one row per run: mode, times, status, config fingerprint, statistics and errors |
-
-New columns are added to an existing database automatically.
-
-## Layout
-
-- `app.py`: the Streamlit dashboard; `.streamlit/config.toml`: dashboard server settings
-- `outbreak_monitor/`: application code
-  - `discovery.py` finds articles
-  - `extractor.py` gets article text
-  - `processing.py` cleans headlines, tags keywords and matches stories
-  - `relevance.py` classifies articles
-  - `gazetteer.py` builds and loads the reference place data; `location.py` finds the outbreak location
-  - `official.py` reads the IDSP weekly outbreak reports
-  - `export_samples.py` writes the sample records and schema to `samples/`
-  - `dashboard_data.py` loads, filters and groups articles and official records for the dashboard
-  - `collector.py` runs the pipeline
-  - `reprocess.py` re-applies the configuration to stored articles
-  - `scheduler.py` runs the pipeline on a schedule
-- `config/`: diseases and keywords, relevance cues, locations, and news sources (YAML)
-- `reference/`: India and foreign place reference data (from GeoNames)
-- `evaluation/`: evaluation report (`REPORT.md`, `results.md`), scoring (`evaluate.py` + `labels.csv`), location accuracy (`location_eval.py` + `location_labels.csv`), coverage check (`recall_check.py`)
-- `samples/`: sample records and the database schema
-- `Dockerfile`, `docker-compose.yml`: container setup
-- `tests/`: pytest tests
-- `data/`: SQLite database and logs (not committed)
+```
+app.py                     Streamlit dashboard (.streamlit/config.toml has its settings)
+outbreak_monitor/
+  discovery.py             finds article links in feeds, sitemaps and topic pages
+  extractor.py             downloads articles and extracts the text
+  processing.py            headline cleaning, keyword tagging, story grouping
+  relevance.py             relevance and event classification
+  gazetteer.py, location.py  place reference data and outbreak location
+  official.py              NCDC/IDSP weekly reports
+  collector.py             one collection run; scheduler.py runs it every 30 minutes
+  reprocess.py             re-applies the configuration to stored articles
+  dashboard_data.py        data behind the dashboard
+  export_samples.py        sample records and schema
+config/                    diseases, relevance cues, locations, sources
+reference/                 place data and India boundary
+evaluation/                evaluation report, labels and scripts
+samples/                   example records and database schema
+tests/                     pytest tests
+Dockerfile, docker-compose.yml
+data/                      database and logs (not in git)
+```
 
 ## Troubleshooting
 
-| Problem | Fix |
+| Problem | What to do |
 |---|---|
-| Dashboard shows an old error after a code or config change (e.g. `'Disease' object has no attribute 'category'`) | Stop Streamlit (Ctrl+C) and start it again: `streamlit run app.py`. Streamlit keeps already-imported modules |
-| `database is locked` | Another collection is running (scheduler and Refresh button at once). Wait for it to finish; SQLite waits 30 s before giving up |
-| A source shows `listings_failed` | Check `listing_status.last_error` or the run's `errors`. Temporary errors are retried next run; a site that keeps failing can be paused with `enabled: false` in `config/sources.yaml` |
-| No official reports | The NCDC site can be slow. Run `python -m outbreak_monitor.official` and check the log; reports already stored are not downloaded again |
-| Changed keywords have no effect | They apply from the next run (stored articles are re-classified automatically), or run `python -m outbreak_monitor.reprocess` |
-| `ModuleNotFoundError` | Activate the virtual environment (`.\.venv\Scripts\Activate.ps1`) and run `pip install -r requirements.txt` |
+| The dashboard shows an old error after code or config changes | Stop Streamlit (Ctrl+C) and start it again; it keeps old modules loaded |
+| `database is locked` | Another collection is running (e.g. the scheduler and the Refresh button). Wait for it to finish |
+| A source keeps failing | Check the errors in `collection_runs` or `listing_status`. Temporary errors are retried; a site that keeps failing can be disabled in `config/sources.yaml` |
+| No official reports | The NCDC site can be slow. Run `python -m outbreak_monitor.official` and check the log |
+| A keyword change has no effect | It applies from the next run, or run `python -m outbreak_monitor.reprocess` |
+| `ModuleNotFoundError` | Activate the virtual environment and run `pip install -r requirements.txt` |
 
 ## Known limitations
 
-- Classification is rule-based. Headlines that don't name the disease (e.g. "Balaghat child deaths…") and borderline cases (a health department "sensitising the public") can be misclassified. These are what manual review is for.
-- NDTV, The Hindu, India Today and Deccan Chronicle have no archive sitemaps (and the first three no keyword pages) we can use. Their backfill and catch-up only reach back as far as their RSS feeds and 48-hour sitemaps. Continuous scheduled runs cover them fully.
-- Archive sitemaps have no headlines. During backfill, an article from those sites is found only if a keyword appears in its URL slug, or if it is on a keyword page.
-- `refresh_interval_minutes` is read when the scheduler starts, so changing it requires a restart.
-- Location rules are heuristics. National or regional pieces (e.g. a WHO statement issued in New Delhi) can get a state. A headline about a whole state whose body describes one district stays state-level. Where a patient lives vs where they were treated is only partly handled. Review flags and manual review cover these cases.
-- The small spaCy model sometimes misses or mislabels place names. The reference-data match and review flags compensate, but a village that neither recognises is not found.
-- IDSP reports appear about two months after the outbreak, and only the latest `weeks` reports are read. Districts created recently (e.g. Bengaluru South, 2025) are not in GeoNames and are mapped at state level.
+- The classifier is rule-based. Headlines that don't name the disease (e.g. a series of child deaths) can be missed, and borderline pieces can go either way. That's what the review column is for.
+- NDTV, The Hindu, India Today and Deccan Chronicle have no archives the collector can use, so after a long gap they only reach back as far as their feeds. Regular scheduled runs cover them fully.
+- Archive sitemaps don't include headlines, so when catching up, articles from them are found only if a keyword is in the URL or they appear on a topic page.
+- Location rules are heuristics. National stories issued from a city can pick up a state, and where a patient lives versus where they were treated isn't always clear. Uncertain cases are flagged for review.
+- IDSP reports arrive about two months late. Districts created recently (e.g. Bengaluru South) aren't in GeoNames and are mapped at state level.
+- Changing the refresh interval needs a scheduler restart.

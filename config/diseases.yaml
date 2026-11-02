@@ -9,8 +9,6 @@
 #                 whether an article about a disease reports an outbreak.
 #   search_terms  Terms used to open each site's topic/search page (sources.yaml -> keyword_pages).
 #                 Keep these short and broad. Defaults to the first keyword if omitted.
-#
-# Initial configuration agreed with the project manager; refine using the relevance and location results.
 
 diseases:
   # ---------------------------------------------------------------- Vector-borne

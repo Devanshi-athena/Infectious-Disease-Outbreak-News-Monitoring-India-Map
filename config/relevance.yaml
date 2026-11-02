@@ -1,4 +1,4 @@
-# Cue words for relevance (B4) and event classification (B5). Edit to tune; no code changes needed.
+# Cue words for relevance and event classification. Edit to tune; no code changes needed.
 # Stored articles are re-classified automatically on the next run (or: python -m outbreak_monitor.reprocess).
 #
 # Each entry is a word or phrase, matched case-insensitively as whole words.

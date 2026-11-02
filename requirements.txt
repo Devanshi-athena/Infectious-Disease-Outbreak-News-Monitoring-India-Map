@@ -1,13 +1,13 @@
-# Pinned dependencies are added phase by phase.
+# Pinned dependencies.
 
-# Phase 1: collection and storage
+# Collection and storage
 feedparser==6.0.14
 requests==2.34.2
 PyYAML==6.0.3
 SQLAlchemy==2.1.5
 pytest==9.1.1
 
-# Phase 2: extraction and reliability
+# Extraction and reliability
 trafilatura==2.3.1
 tenacity==9.2.1
 APScheduler==3.11.3
