@@ -1,0 +1,68 @@
+# How disease names in the official IDSP weekly reports map to the monitored diseases (diseases.yaml).
+#
+# The report's own wording is always stored as printed (disease_raw). A record is linked to a monitored
+# disease only when its term is listed here. Terms are compared in lower case, ignoring "Suspected" and
+# anything in brackets ("Malaria (P. falciparum)" -> "malaria"). A combined entry such as
+# "Scrub Typhus & Dengue" is split on "&", "and" and "," and each part is looked up.
+#
+# Deliberately NOT mapped (kept under the report's own term), because the term alone does not identify
+# a monitored disease:
+#   acute hepatitis                -> not necessarily hepatitis A or E
+#   dysentery, shigellosis         -> a specific form of diarrhoeal disease, not ADD in general
+#   fever with rash                -> a syndrome, not an unexplained fever cluster
+#   chickenpox, mumps, hand foot and mouth disease, GBS, West Nile fever, meningococcal meningitis
+#     -> not monitored diseases
+#
+# The same standard applies to news articles (diseases.yaml): the source never changes how a disease
+# is identified.
+
+map:
+  acute diarrhoeal disease: Acute Diarrhoeal Disease
+  acute diarrheal disease: Acute Diarrhoeal Disease
+  acute gastroenteritis: Acute Diarrhoeal Disease
+  gastroenteritis: Acute Diarrhoeal Disease
+  food poisoning: Acute Diarrhoeal Disease      # the monitored group includes food-poisoning outbreaks
+  cholera: Cholera
+  typhoid: Typhoid
+  enteric fever: Typhoid
+  hepatitis a: Hepatitis A / E
+  hepatitis e: Hepatitis A / E
+  hepatitis a & e: Hepatitis A / E
+  jaundice: Jaundice (cause not confirmed)       # not assumed to be hepatitis A or E
+  dengue: Dengue
+  malaria: Malaria
+  chikungunya: Chikungunya
+  japanese encephalitis: Japanese Encephalitis / AES
+  acute encephalitis syndrome: Japanese Encephalitis / AES
+  acute encephalitic syndrome: Japanese Encephalitis / AES
+  aes: Japanese Encephalitis / AES
+  chandipura virus: Japanese Encephalitis / AES
+  chandipura: Japanese Encephalitis / AES
+  nipah: Nipah
+  nipah virus: Nipah
+  leptospirosis: Leptospirosis
+  scrub typhus: Scrub Typhus
+  kyasanur forest disease: Kyasanur Forest Disease (KFD)
+  kfd: Kyasanur Forest Disease (KFD)
+  rabies: Rabies
+  human rabies: Rabies
+  avian influenza: Other zoonotic outbreaks
+  bird flu: Other zoonotic outbreaks
+  anthrax: Other zoonotic outbreaks
+  brucellosis: Other zoonotic outbreaks
+  plague: Other zoonotic outbreaks
+  crimean-congo haemorrhagic fever: Other zoonotic outbreaks
+  crimean-congo hemorrhagic fever: Other zoonotic outbreaks
+  cchf: Other zoonotic outbreaks
+  mpox: Other zoonotic outbreaks
+  influenza: Influenza (H1N1 / H3N2)
+  h1n1: Influenza (H1N1 / H3N2)
+  h3n2: Influenza (H1N1 / H3N2)
+  swine flu: Influenza (H1N1 / H3N2)
+  covid-19: COVID-19
+  measles: Measles
+  rubella: Measles                               # the monitored group is "Measles (incl. rubella)"
+  diphtheria: Diphtheria
+  # A fever outbreak with no diagnosis is an unexplained fever cluster, as "fever outbreak" is in news.
+  fever: Unexplained fever / deaths / clusters
+  only fever < 7 days: Unexplained fever / deaths / clusters

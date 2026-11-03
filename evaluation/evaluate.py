@@ -46,8 +46,11 @@ def main() -> dict:
         return place["state"] if place["location_level"] else (state or None), place["district"]
 
     def disease_name(label: str) -> str:
-        """A labelled disease as its configured name ("Influenza" -> "Influenza (H1N1 / H3N2)")."""
-        return next((c for c in configured if c.startswith(label) or label.startswith(c)), label)
+        """A labelled disease as its configured name: "Influenza" -> "Influenza (H1N1 / H3N2)", and
+        "AES / unspecified encephalitis" -> "Japanese Encephalitis / AES" (a shared name of the group)."""
+        parts = {p.strip().lower() for p in label.split("/")}
+        return next((c for c in configured if c.startswith(label) or label.startswith(c)
+                     or parts & {p.strip().lower() for p in c.split("/")}), label)
 
     tp = fp = fn = tn = 0
     status_ok = disease_exact = disease_overlap = both = 0

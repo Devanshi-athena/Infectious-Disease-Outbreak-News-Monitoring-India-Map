@@ -124,3 +124,17 @@ def test_dashboard_official_layer():
     assert len(filter_official(df, [], [])) == 2                      # unmapped diseases shown without a filter
     popup = official_popup_html(next(df.itertuples()))
     assert "Dengue &lt;b&gt;" in popup and "Week 34, 2026" in popup and "https://x/w34.pdf" in popup
+
+
+def test_disease_map_maps_only_listed_terms():
+    from outbreak_monitor.official import DiseaseMap
+    m = DiseaseMap()
+    assert m.diseases("Suspected Typhoid") == ["Typhoid"]
+    assert m.diseases("Malaria (P. falciparum)") == ["Malaria"]
+    assert m.diseases("Scrub Typhus & Dengue") == ["Scrub Typhus", "Dengue"]
+    assert m.diseases("Hepatitis A & E") == ["Hepatitis A / E"]
+    assert m.diseases("Acute Encephalitic Syndrome") == ["Japanese Encephalitis / AES"]
+    assert m.diseases("Fever") == m.diseases("Only Fever < 7 days") == ["Unexplained fever / deaths / clusters"]
+    assert m.diseases("Jaundice") == ["Jaundice (cause not confirmed)"]
+    for term in ("Acute Hepatitis", "Dysentery", "Shigellosis", "Fever with Rash", "Chickenpox"):
+        assert m.diseases(term) == [], term          # kept under the report's own term

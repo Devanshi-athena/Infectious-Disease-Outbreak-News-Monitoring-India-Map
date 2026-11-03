@@ -42,8 +42,9 @@ diseases:
 
   - name: Acute Diarrhoeal Disease
     category: Water- and food-borne
+    # Dysentery is a specific form, not acute diarrhoeal disease in general, so it is not a keyword.
     keywords: ["acute diarrhoeal disease", "acute diarrheal disease", "diarrhoea", "diarrhea", "gastroenteritis",
-               "dysentery", "food poisoning", "loose motions"]
+               "food poisoning", "loose motions"]
     search_terms: ["diarrhoea", "gastroenteritis", "food poisoning"]
 
   - name: Typhoid
@@ -53,11 +54,10 @@ diseases:
 
   - name: Hepatitis A / E
     category: Water- and food-borne
-    # "jaundice" alone also matches liver disease and newborn jaundice, so only outbreak phrasing is used.
-    keywords: ["hepatitis A", "hepatitis E", "hepatitis-A", "hepatitis-E", "viral hepatitis",
-               "jaundice outbreak", "outbreak of jaundice", "jaundice cases", "jaundice case", "cases of jaundice",
-               "jaundice deaths", "jaundice death", "died of jaundice", "jaundice patients", "jaundice spread"]
-    search_terms: ["hepatitis", "jaundice"]
+    # Only hepatitis A or E named as such. Jaundice or "viral hepatitis" alone doesn't identify the type,
+    # the same rule as for the official reports (official_diseases.yaml).
+    keywords: ["hepatitis A", "hepatitis E", "hepatitis-A", "hepatitis-E", "hepatitis A and E", "HAV", "HEV"]
+    search_terms: ["hepatitis"]
 
   # ---------------------------------------------------------------- Emerging and zoonotic
   - name: Nipah
@@ -117,6 +117,16 @@ diseases:
     search_terms: ["diphtheria"]
 
   # ---------------------------------------------------------------- Other epidemic-prone
+  - name: Jaundice (cause not confirmed)
+    category: Other epidemic-prone
+    # Jaundice outbreaks where the cause isn't named. Outbreak phrasing only: plain "jaundice" also matches
+    # liver disease and newborn care. Dropped when hepatitis A or E is named (the cause is then confirmed).
+    keywords: ["jaundice outbreak", "outbreak of jaundice", "jaundice cases", "jaundice case", "cases of jaundice",
+               "jaundice deaths", "jaundice death", "died of jaundice", "jaundice patients", "jaundice spread",
+               "jaundice cluster"]
+    search_terms: ["jaundice"]
+    superseded_by: ["Hepatitis A / E"]
+
   - name: Unexplained fever / deaths / clusters
     category: Other epidemic-prone
     keywords: ["mystery fever", "mysterious fever", "unknown fever", "unidentified fever", "mystery illness",

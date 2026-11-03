@@ -20,12 +20,11 @@ from bs4 import BeautifulSoup
 from rapidfuzz import fuzz, process
 from sqlalchemy import select
 
-from .config import load_disease_config, load_official_sources
+from .config import CONFIG_DIR, _read_yaml, load_disease_config, load_official_sources
 from .db import OfficialReport, get_session_factory, utcnow
 from .fetch import allowed_by_robots, get
 from .gazetteer import load_india, normalise_name
 from .logs import setup_logging
-from .matcher import KeywordMatcher
 
 log = logging.getLogger(__name__)
 
@@ -296,10 +295,38 @@ class DistrictLocator:
         return self.states[best[0]] if best else None
 
 
+class DiseaseMap:
+    """Report disease terms -> monitored diseases, from the explicit table in config/official_diseases.yaml.
+    Terms not in the table stay unmapped (the record keeps the report's own wording)."""
+
+    def __init__(self, path=CONFIG_DIR / "official_diseases.yaml"):
+        diseases = load_disease_config().diseases
+        known = {d.name for d in diseases}
+        self.superseded_by = {d.name: set(d.superseded_by) for d in diseases if d.superseded_by}
+        self.terms = {self.key(term): disease for term, disease in (_read_yaml(path).get("map") or {}).items()}
+        if unknown := set(self.terms.values()) - known:
+            raise ValueError(f"{path.name} maps to diseases not in diseases.yaml: {sorted(unknown)}")
+
+    @staticmethod
+    def key(term: str) -> str:
+        """'Malaria (P. falciparum)' -> 'malaria', 'Suspected Typhoid' -> 'typhoid'."""
+        term = re.sub(r"\(.*?\)", " ", term.lower())
+        term = re.sub(r"\bsuspected\b", " ", term)
+        return re.sub(r"\s+", " ", term).strip(" .,-")
+
+    def diseases(self, raw: str | None) -> list[str]:
+        if not raw:
+            return []
+        whole = self.key(raw)
+        parts = [whole] if whole in self.terms else [self.key(p) for p in re.split(r"&|,|\band\b", raw, flags=re.I)]
+        found = list(dict.fromkeys(self.terms[p] for p in parts if p in self.terms))
+        return [d for d in found if not self.superseded_by.get(d, set()) & set(found)]
+
+
 def collect_official(session_factory=None) -> dict:
     """Fetch the configured official reports that are not stored yet. Returns statistics."""
     session_factory = session_factory or get_session_factory()
-    matcher = KeywordMatcher(load_disease_config().diseases)
+    disease_map = DiseaseMap()
     locator = DistrictLocator()
     stats = {"reports_read": 0, "records_new": 0, "records_updated": 0, "errors": []}
     for source in (s for s in load_official_sources() if s.enabled):
@@ -324,7 +351,7 @@ def collect_official(session_factory=None) -> dict:
                 stats["reports_read"] += 1
                 for r in map(locator.repair, records):
                     # Only the report's own disease column: the comment also names diseases that were ruled out.
-                    diseases = matcher.match(r["disease_raw"])
+                    diseases = disease_map.diseases(r["disease_raw"])
                     row = session.get(OfficialReport, r["report_id"])
                     if row is None:
                         row = OfficialReport(report_id=r["report_id"])
@@ -341,9 +368,9 @@ def collect_official(session_factory=None) -> dict:
                     row.collected_at = utcnow()
                 session.commit()
                 log.info("%s week %d/%d: %d outbreak records", source.name, report.week, report.year, len(records))
-        with session_factory() as session:  # diseases.yaml may have changed: map every stored record again
+        with session_factory() as session:  # the mapping may have changed: map every stored record again
             for row in session.scalars(select(OfficialReport)):
-                row.diseases = matcher.match(row.disease_raw)
+                row.diseases = disease_map.diseases(row.disease_raw)
             session.commit()
     return stats
 

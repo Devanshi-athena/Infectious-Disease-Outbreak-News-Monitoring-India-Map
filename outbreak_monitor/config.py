@@ -42,6 +42,7 @@ class Disease:
     keywords: list[str]
     search_terms: list[str] = field(default_factory=list)
     category: str = "Other"   # disease group, e.g. "Vector-borne"
+    superseded_by: list[str] = field(default_factory=list)  # dropped when one of these is also found
 
     def __post_init__(self):
         if not self.search_terms and self.keywords:
@@ -80,7 +81,8 @@ def load_disease_config(path: Path = CONFIG_DIR / "diseases.yaml") -> DiseaseCon
     data = _read_yaml(path)
     diseases = [
         Disease(name=d["name"], keywords=list(d.get("keywords") or []),
-                search_terms=list(d.get("search_terms") or []), category=d.get("category") or "Other")
+                search_terms=list(d.get("search_terms") or []), category=d.get("category") or "Other",
+                superseded_by=list(d.get("superseded_by") or []))
         for d in data.get("diseases") or []
     ]
     return DiseaseConfig(diseases=diseases, settings=Settings(**(data.get("settings") or {})))

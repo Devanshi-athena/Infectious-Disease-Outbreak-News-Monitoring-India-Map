@@ -55,19 +55,25 @@ The Docker setup has not been tested on a machine with Docker yet.
 
 ## Diseases monitored
 
-19 diseases in 5 groups, each with alternative names and spellings in `config/diseases.yaml`:
+20 disease groups in 5 categories, each with alternative names and spellings in `config/diseases.yaml`:
 
 | Group | Diseases |
 |---|---|
 | Vector-borne | Dengue, Malaria, Chikungunya, Japanese Encephalitis / AES (incl. "brain fever", "chamki bukhar", Chandipura) |
-| Water- and food-borne | Cholera, Acute Diarrhoeal Disease (incl. gastroenteritis, food poisoning), Typhoid, Hepatitis A / E (incl. jaundice outbreaks) |
+| Water- and food-borne | Cholera, Acute Diarrhoeal Disease (incl. gastroenteritis, food poisoning), Typhoid, Hepatitis A / E |
 | Emerging and zoonotic | Nipah, Leptospirosis ("rat fever"), Scrub Typhus, Kyasanur Forest Disease ("monkey fever"), Rabies, other zoonotic outbreaks (bird flu, anthrax, brucellosis, plague, CCHF, mpox) |
 | Respiratory and vaccine-preventable | Influenza (H1N1, H3N2, swine flu), COVID-19, Measles (incl. rubella), Diphtheria |
-| Other epidemic-prone | Unexplained fever, deaths or clusters ("mystery fever", "unknown disease"…) |
+| Other epidemic-prone | Jaundice (cause not confirmed), Unexplained fever, deaths or clusters ("mystery fever", "unknown disease"…) |
 
 Words like "outbreak", "surge in cases", "cluster", "suspected cases" or "deaths" are not used to collect articles. They only help decide whether an article that already names a disease is reporting an outbreak.
 
-Some keywords are deliberately narrow. Plain "jaundice" also matched articles about liver disease and newborn care, so only phrases like "jaundice cases" or "jaundice outbreak" count. Plain "plague" mostly appeared as a figure of speech, so only "bubonic plague", "plague cases" and similar are used.
+A disease is only recorded when the text actually names it, and the same rule applies to news articles and official reports:
+- jaundice or "viral hepatitis" alone is not taken to mean hepatitis A or E. A jaundice outbreak without a named cause goes to its own group, *Jaundice (cause not confirmed)*, which is dropped as soon as hepatitis A or E is named;
+- dysentery is not counted as acute diarrhoeal disease in general;
+- a suspected "brain fever" is AES, not Japanese Encephalitis;
+- bird flu ("avian influenza") is not also counted as seasonal influenza. Where keywords overlap, the more specific one wins.
+
+A few keywords are also narrowed to avoid false matches. Plain "plague" mostly appears as a figure of speech, so only "bubonic plague", "plague cases" and similar are used.
 
 ## Sources
 
@@ -99,7 +105,7 @@ Sources can be added, paused (`enabled: false`) or removed in `config/sources.ya
 
 ### Official reports (NCDC / IDSP)
 
-NCDC publishes a PDF every week listing each outbreak reported by the states through IDSP: state, district, disease, cases, deaths, dates, status and the action taken. These are read automatically and kept in their own table (`official_reports`). The reports appear about two months after the week they cover, and the latest 12 weeks are kept.
+NCDC publishes a PDF every week listing each outbreak reported by the states through IDSP: state, district, disease, cases, deaths, dates, status and the action taken. These are read automatically and kept in their own table (`official_reports`). The reports appear about two months after the week they cover. Each run checks the latest 12 weekly reports and reads any it hasn't stored yet.
 
 Reading these PDFs reliably took some care:
 - each outbreak starts at its unique ID (e.g. `AS/BAJ/2026/34/1369`), and text that wraps across lines or pages is joined back to it;
@@ -108,9 +114,23 @@ Reading these PDFs reliably took some care:
 - if state, district and disease have shifted by one column, they are put back using the place names;
 - diseases are taken only from the disease column, never from the comments, which often mention diseases that were ruled out.
 
+The report's own disease name is always kept as printed. It is linked to a monitored disease only through the explicit table in `config/official_diseases.yaml` (for example "Acute Gastroenteritis" → Acute Diarrhoeal Disease, "Chandipura Virus" → Japanese Encephalitis / AES). Terms that don't clearly identify a monitored disease are not mapped to one: "Jaundice" goes to *Jaundice (cause not confirmed)* rather than hepatitis A/E, "Acute Hepatitis" is kept as reported, dysentery and shigellosis are not treated as acute diarrhoeal disease in general, and fever with rash stays as reported. A plain "Fever" outbreak (no diagnosis) is counted as an unexplained fever cluster, the same as a "fever outbreak" in the news. Chickenpox, mumps and other diseases outside the list are kept under their own names. This is the same standard used for news articles.
+
 Values are kept as printed, including a few obvious errors in the source PDFs. Where a value is cut off by a page break, the field is left empty rather than guessed. On a check of six weekly reports (245 outbreaks), 244 records were complete and 243 were located to the right district.
 
-Other official sources were looked at but not used: the MoHFW site needs a full browser, the IDSP site doesn't respond, PIB's feed mixes all ministries and is mostly in Hindi, and state health department bulletins differ too much from state to state.
+Other official sources were checked but not added, because they don't publish outbreak reports in a form that can be collected reliably:
+
+| Source | Why it isn't used |
+|---|---|
+| MoHFW | pages are built in the browser; no feed or listing |
+| IDSP website | doesn't respond (the reports are on NCDC) |
+| PIB | the feed mixes all ministries and is mostly in Hindi |
+| ICMR | press releases are research calls, grants and workshops; no outbreak reports, no feed |
+| DGHS Delhi | news pages hold old COVID orders and bulletins (latest 2023); no feed |
+| NHM | programme guidelines and surveys only; robots.txt doesn't respond |
+| CHEB | site times out; content is health education |
+| Puducherry Health Department | site fails with a certificate (SSL) error |
+| Other state health departments | bulletins are PDFs in different formats and languages per state |
 
 ## How it works
 
@@ -184,18 +204,16 @@ The dashboard only listens on `localhost`, because it can save reviews and start
 
 ## Evaluation
 
-The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 articles were picked at random from the database and labelled by reading them (`evaluation/labels.csv`). The system's results were then compared with the labels:
+The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 articles were picked at random from the database, labelled by reading them (`evaluation/labels.csv`, checked by Devanshi), and compared with what the system decided:
 
 | | Result |
 |---|---|
-| Relevance: precision / recall / F1 | 83% / 93% / 0.88 |
-| Event status | 96% |
-| Disease (at least one correct / all correct) | 100% / 81% |
-| State / district | 98% / 82% |
+| Relevance: precision / recall / F1 | 95% / 95% / 0.95 |
+| Event status | 95% |
+| Disease (at least one correct / all correct) | 100% / 84% |
+| State / district | 97% / 83% |
 
-A second set of 60 articles, labelled for location only, gives 95% for state and 92% for district. Most of the false positives are dengue or rabies drives with no case numbers, which may or may not count as relevant depending on how strict you want to be. The report lists every disagreement.
-
-The labels were made with AI assistance and still need to be checked by a person. After checking them, run `python -m evaluation.evaluate` to get the final numbers.
+Concrete disease-control actions (a dengue ward, fines for mosquito breeding, an anti-rabies drive) count as relevant even without case numbers. A second set of 60 articles, labelled for location only, gives 95% for state and 92% for district. The report lists every disagreement.
 
 ## Data
 
@@ -222,6 +240,7 @@ To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and 
 | `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
 | `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
 | `config/sources.yaml` | news sites and how to read them, plus the official report series |
+| `config/official_diseases.yaml` | which IDSP disease terms map to which monitored disease |
 
 Changes take effect on the next run. Stored articles are re-classified automatically.
 
@@ -232,20 +251,9 @@ Changes take effect on the next run. Stored articles are re-classified automatic
 - There are no logins, no paywall workarounds and no full-site crawling.
 - Article text is stored only for matching and classification and is never shown. The dashboard shows the headline, source and date, and links to the original.
 
-NCDC's copyright policy allows its content to be reused with the source clearly acknowledged; the dashboard names IDSP/NCDC and links every record to its PDF. The news sites' terms of use still need to be read and recorded here before the tool is shared more widely. Any site that doesn't allow automated reading should be disabled in `config/sources.yaml`.
+**Terms of use.** The news sites' terms of use were reviewed in November 2026. Most of the sites currently used restrict automated collection of their content. This project is a prototype for evaluation, so collection continues for now, on the limited basis described above. Before any production or public use, each site needs explicit permission (or a licensed news feed), and sites that don't allow it should be disabled in `config/sources.yaml` or replaced with permitted sources.
 
-| Source | Terms page (URL, date checked) | Automated access / RSS allowed? | Decision |
-|---|---|---|---|
-| The Hindu | | | |
-| Times of India | | | |
-| The Indian Express | | | |
-| Hindustan Times | | | |
-| NDTV | | | |
-| India Today | | | |
-| News18 | | | |
-| Deccan Chronicle | | | |
-| Scroll | | | |
-| ET HealthWorld | | | |
+NCDC's copyright policy allows its content to be reused with the source clearly acknowledged. The dashboard names IDSP/NCDC and links every record to its weekly PDF.
 
 Third-party data and services:
 

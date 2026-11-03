@@ -56,8 +56,8 @@ def headline_numbers(headline: str) -> tuple[str, ...]:
 
 def tag_content(matcher: KeywordMatcher, headline: str, body: str | None) -> tuple[list[str], dict]:
     """Disease tags and the exact keywords behind them, from the headline and article text only."""
-    found = matcher.matched_keywords(headline=headline, text=body)
-    return list(found), found
+    found = matcher.matched_keywords(headline=headline, text=body)   # every keyword found, for verification
+    return matcher.resolve(list(found)), found
 
 
 @dataclass

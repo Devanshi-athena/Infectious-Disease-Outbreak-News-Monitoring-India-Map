@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 import spacy
 
 from .config import CONFIG_DIR, Disease, _read_yaml
-from .matcher import compile_phrases
+from .matcher import KeywordMatcher, compile_phrases
 from .processing import split_paragraphs
 
 CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current",
@@ -83,7 +83,7 @@ class Classification:
 
 class RelevanceClassifier:
     def __init__(self, diseases: list[Disease], cues: dict):
-        self.diseases = {d.name: compile_phrases(d.keywords) for d in diseases if d.keywords}
+        self.matcher = KeywordMatcher(diseases)
         self.cues = {kind: compile_phrases(cues.get(kind) or []) for kind in CUE_KINDS}
         self.excluded_sections = {s.lower() for s in cues.get("excluded_url_sections") or []}
 
@@ -92,13 +92,13 @@ class RelevanceClassifier:
         m = pattern.search(text) if pattern else None
         return m.group(0) if m else None
 
-    def _without_comparisons(self, text: str, disease: re.Pattern) -> str:
-        """The text without '<comparison word> [the/a] <disease>' ("like Covid"), so a comparison is not a mention."""
+    def _diseases_in(self, text: str) -> set[str]:
+        """Diseases mentioned in the text. '<comparison word> [the/a] <disease>' ("like Covid") is not a mention."""
         comparison = self.cues["comparison"]
-        if not comparison:
-            return text
-        return re.sub(rf"(?:{comparison.pattern})\s+(?:(?:the|a|an)\s+)?(?:{disease.pattern})", " ", text,
-                      flags=re.IGNORECASE)
+        if comparison and self.matcher.pattern:
+            text = re.sub(rf"(?:{comparison.pattern})\s+(?:(?:the|a|an)\s+)?(?:{self.matcher.pattern.pattern})", " ",
+                          text, flags=re.IGNORECASE)
+        return {disease for disease, _ in self.matcher.mentions(text)}
 
     def _event(self, text: str) -> str | None:
         m = CASE_COUNT.search(text)
@@ -112,8 +112,9 @@ class RelevanceClassifier:
         # Per disease: where it is mentioned and what the mentioning sentences say.
         central, event_d, response_d, event_sents = [], [], [], set()
         in_headline, event_count = set(), {}
-        for name, pattern in self.diseases.items():
-            idx = [i for i, s in enumerate(sents) if pattern.search(self._without_comparisons(s, pattern))]
+        mentioned = [self._diseases_in(s) for s in sents]
+        for name in [n for n in self.matcher.order if any(n in ds for ds in mentioned)]:
+            idx = [i for i, ds in enumerate(mentioned) if name in ds]
             if not idx:
                 continue
             in_head = idx[0] == 0
@@ -170,6 +171,9 @@ class RelevanceClassifier:
                 reasons.append(f"secondary mention(s) not counted: {', '.join(dropped)}")
             relevant = focused
 
+        if dropped := [d for d in relevant if d not in self.matcher.resolve(relevant)]:
+            reasons.append(f"superseded by a confirmed cause: {', '.join(dropped)}")
+            relevant = self.matcher.resolve(relevant)
         status, why = self._event_status(sents, event_sents | {0}, content_type, published_at)
         return Classification("relevant", content_type, status, relevant, reasons + [why])
 

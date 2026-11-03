@@ -1,59 +1,64 @@
 # Evaluation report
 
-Outbreak News Monitor prototype · evaluated 29 October 2026 · `python -m evaluation.evaluate` reproduces the numbers (details in `results.md`).
+Outbreak News Monitor prototype, evaluated on 3 November 2026. Run `python -m evaluation.evaluate` to reproduce the numbers; the full list of disagreements is in `results.md`.
 
 ## Summary
 
-| What is measured | Result | Sample |
+| What was measured | Result | Articles |
 |---|---|---|
-| Relevance precision (system "relevant" that really report an outbreak or response) | **83%** | 120 articles |
-| Relevance recall (real outbreak reports the system keeps) | **93%** (95% after one bug fix, see below) | 120 articles |
-| Relevance F1 | **0.88** (0.89 after the fix) | 120 articles |
-| Event status (new / suspected / historical / unclear) | 96% | 53 relevant articles |
-| Disease attribution (at least one correct · exactly correct) | 100% · 81% | 53 relevant articles |
-| Inside / outside India | 100% | 53 relevant articles |
-| State/UT | 98% (48/49) · 95% (57/60) | two samples |
-| District level (right district, or state level when no district is supported) | 82% (40/49) · 92% (54/59) | two samples |
+| Relevance precision (articles marked relevant that really are) | **95%** | 120 |
+| Relevance recall (relevant articles the system keeps) | **95%** | 120 |
+| Relevance F1 | **0.95** | 120 |
+| Event status (new / suspected / historical / unclear) | 95% | 62 |
+| Disease (at least one correct / exactly right) | 100% / 84% | 62 |
+| Inside or outside India | 100% | 62 |
+| State / UT | 97% (56/58) | 58 |
+| District level (right district, or state level when no single district applies) | 83% (48/58) | 58 |
 
-## Method
+A separate set of 60 articles labelled for location only (`location_labels.csv`, `python -m evaluation.location_eval`) gives 95% for state and 92% for district.
 
-- **Sample:** 120 articles drawn at random (fixed seed 42) from the 495 stored articles that match a disease keyword, published 9 September – 28 October 2026 and collected 23–29 October. They come from 9 of the 10 sources (Times of India 87, Hindustan Times 11, Indian Express 8, Deccan Chronicle 5, others 1–3; none from NDTV), in proportion to what each source contributes to the database. The sample was taken *before* looking at any results.
-- **Labels** (`labels.csv`): each article was read and labelled for relevance, event status, diseases and outbreak location by two AI-assisted labelling passes that saw only the article text and a written labelling guide, never the system's output. They are marked **"AI-assisted, unverified"** and should be checked by a person before the numbers are quoted as final; disagreements below are the best place to start.
-- **Labelling guide:** relevant = reports a current outbreak or disease event of a monitored disease in a place, or a public-health response to such activity. Not relevant: research, awareness, policy without an event, court cases about past events, crime, passing mentions, unmonitored diseases.
-- **Scored:** the automatic classification, not manual review decisions. District names are compared through the GeoNames reference data, so spelling variants count as equal.
-- **Second location sample:** the earlier 60-article location set (`location_labels.csv`, spot-checked by the project owner), scored by `python -m evaluation.location_eval`.
-- The classifier was **not tuned on this sample**: the misclassifications below are reported as found.
+## How it was done
 
-## Relevance errors (15 of 120)
+- **Sample.** 120 articles picked at random (fixed seed) from the 495 stored articles that match a disease keyword, published 9 September – 28 October 2026. They come from 9 of the 10 sources in proportion to what each contributes: Times of India 87, Hindustan Times 11, Indian Express 8, Deccan Chronicle 5, the rest 1–3 each (none from NDTV).
+- **Labels** (`labels.csv`). Each article was labelled for relevance, event status, diseases and outbreak location from the article text alone, without looking at what the system had decided. The labels were drafted with AI assistance and then checked by Devanshi.
+- **What counts as relevant.** An article is relevant if it reports a current outbreak or disease event of a monitored disease in a place, or a concrete prevention, surveillance or preparedness action against a monitored disease in an area (for example a dengue ward being set up, fines for mosquito breeding, an anti-rabies vaccination drive), even without case numbers. Research, explainers, policy without an event, court cases about past events, crime and passing mentions are not relevant.
+- **Diseases.** Labels name the disease the article supports and nothing more, the same standard the system uses for news and official reports. A suspected "brain fever" death is labelled AES / unspecified encephalitis, not Japanese Encephalitis (it still falls in the monitored "Japanese Encephalitis / AES" group). Jaundice alone is not hepatitis A/E (it has its own "cause not confirmed" group), dysentery is not acute diarrhoeal disease in general, and bird flu is not seasonal influenza.
+- **Scoring.** The automatic result is scored, not manual review decisions. Place names are compared through the reference data, so spelling variants count as the same place.
 
-**False positives (11)**
-- *6 public-health responses without reported cases* (a new dengue ward, fines for mosquito breeding, dengue preparedness reviews by a collector, minister and chief minister, an anti-rabies vaccination target). The labels call these not relevant; the system calls them responses. This is a definition question rather than a bug: if such responses count as relevant, precision is 92%.
-- *2 rabid-animal scares* (dog bites in Latehar; anti-rabies shots after drinking milk from a rabid cow in Gorakhpur): borderline.
-- *3 real errors:* a climate study predicting dengue risk, a US student's research on cholera bacteria, and a Supreme Court case on a child's death after an anti-malaria tablet. The headlines name the disease and the text uses words like "outbreaks" and "died", which the rules read as an event.
+## Where the system disagrees with the labels
 
-**False negatives (4)**
-- *"'Mystery' fever kills 2 sisters in Baran"*: the quotation marks broke the keyword "mystery fever" in the headline. **Fixed after the evaluation** (keywords now match across quote marks); re-processing all 555 stored articles changed only this one. Because the bug was found on this sample, the post-fix recall (95%) is slightly optimistic; the 93% measured first is the unbiased figure.
-- *"138 fall ill after consuming prasad in Majuli"*: a food-poisoning outbreak whose headline names no disease.
-- *Balaghat child deaths*: the headline names no disease (a known limitation).
-- *"Vandalur zoo to reopen after bird flu scare"*: the reopening after an outbreak was not read as an event.
+**Relevance (6 of 120)**
 
-## Location errors (9 of 49)
+Counted as relevant, but not:
+- a climate study predicting dengue risk in Kerala;
+- a US student's research on cholera bacteria;
+- a Supreme Court case about a child's death after an anti-malaria tablet.
 
-- 3 where the label picks one district of a state-wide story (Haryana H1N1, West Bengal dengue, a UP policy item) and the system stays at state level: arguably both are acceptable.
-- 2 the other way round: the system picks a district for a state-wide story (Simdega for Jharkhand measles, Jaipur for Rajasthan scrub typhus).
-- 2 state-level results flagged for review where the district was available (VJTI student in Mumbai; Balaghat).
-- 1 neighbouring district (Imphal East instead of Imphal West).
-- 1 wrong state: "City logs 7 new dengue cases" (Prayagraj) was placed in Delhi, but flagged for review.
+These headlines name the disease and the text uses words like "outbreaks" or "died", which the rules read as an event.
 
-## Recommended next steps
+Missed:
+- "138 fall ill after consuming prasad in Majuli" and the Balaghat child deaths: the headlines don't name a disease.
+- "Vandalur zoo to reopen after bird flu scare": the reopening after an outbreak wasn't read as an event.
 
-1. Have a person verify `labels.csv` (about 1 hour); re-run `python -m evaluation.evaluate`.
-2. Decide whether responses without reported cases count as relevant, and adjust the labels or the classifier accordingly.
-3. Add research cues for "study finds" / "predicts" headlines, and court-case cues (the quoted-keyword bug is already fixed).
-4. Evaluate on a fresh sample after any change, so the scores stay honest.
+**Location (10 of 58)**
+- In 3 cases a state-wide story was labelled with one district (Haryana H1N1, a UP policy item, Balaghat), while the system stayed at state level. Either reading is defensible.
+- In 2 cases it was the other way round: the system picked a district for a state-wide story (Simdega, Jaipur).
+- 1 neighbouring district (Imphal East instead of Imphal West), and 1 wrong district within the right state (Tenkasi instead of Chennai).
+- 1 state-level result where the district was available (the VJTI student in Mumbai).
+- 2 wrong states, both flagged for review: "City logs 7 new dengue cases" (Prayagraj, placed in Delhi) and "CM reviews preparedness…" (Tamil Nadu, placed in Gujarat).
 
-## Limits of this evaluation
+## Changes made along the way
 
-- The labels are AI-assisted and unverified; a single person's review may move the numbers by a few points.
-- 120 articles: the 95% confidence range is roughly ±9 points on precision (64 articles) and ±7 on recall (57). Times of India makes up 73% of the sample, so results mostly reflect its style of reporting.
-- Only stored articles are evaluated (those matching a keyword). Outbreaks reported without any configured keyword are not counted as misses; `python -m evaluation.recall_check` compares collection coverage with Bing News separately.
+- Keywords now match across quote marks. "'Mystery' fever kills 2 sisters in Baran" was missed before; after the change it is caught, and no other stored article changed. Because this bug was found on the sample, recall measured before the fix (one more miss) is the more conservative figure.
+- The classifier was not otherwise tuned on this sample.
+
+## Suggested next steps
+
+1. Add research cues for headlines like "study finds" or "model predicts", and court cues for rulings about past deaths.
+2. Re-run the evaluation on a fresh sample after any rule change, so the numbers stay honest.
+
+## Limits
+
+- 120 articles is a small sample: the 95% confidence range is roughly ±5 points on precision and recall.
+- Times of India makes up 73% of the sample, so the results mostly reflect its style of reporting.
+- Only stored articles are evaluated. An outbreak reported without any configured keyword is never collected, so it can't show up as a miss here. `python -m evaluation.recall_check` compares coverage with Bing News separately.

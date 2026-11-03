@@ -130,13 +130,22 @@ def test_crime_headline_is_not_an_outbreak():
     assert r.relevance == "relevant"
 
 
-def test_jaundice_and_plague_need_outbreak_phrasing():
+def test_disease_inference_is_strict():
     from outbreak_monitor.config import load_disease_config
     from outbreak_monitor.matcher import KeywordMatcher
     m = KeywordMatcher(load_disease_config().diseases)
     assert m.match("Newborn jaundice: when to see a doctor") == []
     assert m.match("Town plagued by potholes") == []
-    assert m.match("3 jaundice deaths in Nainital") == ["Hepatitis A / E"]
+    # Jaundice alone is not hepatitis A/E; it has its own group until a cause is named
+    assert m.match("3 jaundice deaths in Nainital") == ["Jaundice (cause not confirmed)"]
+    assert m.match("Jaundice cases rise; hepatitis A confirmed in samples") == ["Hepatitis A / E"]
+    assert m.match("Newborn jaundice: when to see a doctor") == []
+    assert m.match("Hepatitis A outbreak in hostel") == ["Hepatitis A / E"]
+    assert m.match("Dysentery cases rise in slum") == []              # not acute diarrhoeal disease in general
+    # Overlapping keywords: the more specific one wins
+    assert m.match("Avian influenza confirmed in water birds") == ["Other zoonotic outbreaks"]
+    assert m.match("Bird flu outbreak triggers alert") == ["Other zoonotic outbreaks"]
+    assert m.match("Seasonal influenza and bird flu cases rise") == ["Other zoonotic outbreaks", "Influenza (H1N1 / H3N2)"]
     assert m.match("Bubonic plague case confirmed") == ["Other zoonotic outbreaks"]
 
 
