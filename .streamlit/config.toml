@@ -11,23 +11,23 @@ gatherUsageStats = false
 [client]
 toolbarMode = "viewer"   # no "Deploy" button
 
-# Classic "atlas" look: ivory paper, parchment sidebar, navy accents, serif headings.
+# Public-health portal look: cool grey page, white cards, navy and blue accents, Inter type.
 [theme]
 base = "light"
-primaryColor = "#1F3A5F"
-backgroundColor = "#FBF8F1"
-secondaryBackgroundColor = "#F2ECDF"
-textColor = "#222831"
-linkColor = "#1F3A5F"
-borderColor = "#E2D9C6"
-dataframeBorderColor = "#E2D9C6"
-dataframeHeaderBackgroundColor = "#F2ECDF"
-headingFont = "Georgia, 'Times New Roman', serif"
-font = "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
-baseRadius = "6px"
+primaryColor = "#1554A6"
+backgroundColor = "#F4F6FA"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#172033"
+linkColor = "#1554A6"
+borderColor = "#E2E8F0"
+dataframeBorderColor = "#E2E8F0"
+dataframeHeaderBackgroundColor = "#F1F4F9"
+headingFont = "Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+font = "Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+baseRadius = "10px"
 showWidgetBorder = true
 showSidebarBorder = true
 
 [theme.sidebar]
-backgroundColor = "#F2ECDF"
-secondaryBackgroundColor = "#FBF8F1"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"

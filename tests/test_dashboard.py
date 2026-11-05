@@ -122,6 +122,13 @@ def test_save_reviews(factory):
     assert 1 not in ids(apply_filters(df, Filters()))
 
 
+def kpi_values(at) -> list[str]:
+    """Figures shown in the key-figure cards, in order."""
+    import re
+    cards = next(m.value for m in at.markdown if 'class="kpis"' in m.value)
+    return re.findall(r'<div class="value[^"]*">([^<]*)</div>', cards)
+
+
 def test_app_runs_without_errors(factory, monkeypatch):
     from streamlit.testing.v1 import AppTest
     import outbreak_monitor.db as db
@@ -129,16 +136,16 @@ def test_app_runs_without_errors(factory, monkeypatch):
     at = AppTest.from_file("../app.py", default_timeout=120).run()
     assert not at.exception
     # matching articles, stories on the map (articles 1+2 are one story), distinct locations
-    assert [m.value for m in at.metric][:3] == ["4", "3", "2"]
+    assert kpi_values(at)[:3] == ["4", "3", "2"]
     state_filter = at.sidebar.multiselect[2]      # group, disease, state, source
     state_filter.set_value(["Kerala"]).run()
-    assert not at.exception and at.metric[0].value == "1"
+    assert not at.exception and kpi_values(at)[0] == "1"
     at.sidebar.multiselect[2].set_value([])
     at.sidebar.multiselect[0].set_value(["Respiratory and vaccine-preventable"]).run()   # Measles is in this group
-    assert not at.exception and at.metric[0].value == "1"
+    assert not at.exception and kpi_values(at)[0] == "1"
     at.sidebar.multiselect[0].set_value([])
     at.sidebar.radio[0].set_value("all").run()
-    assert not at.exception and at.metric[0].value == "6"
+    assert not at.exception and kpi_values(at)[0] == "6"
 
 
 def test_latest_reports_and_states(factory):

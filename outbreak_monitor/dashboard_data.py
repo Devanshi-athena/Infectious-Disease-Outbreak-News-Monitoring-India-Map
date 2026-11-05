@@ -13,9 +13,9 @@ from .db import Article, OfficialReport, last_successful_run
 IST = timezone(timedelta(hours=5, minutes=30), "IST")
 REVIEW_OPTIONS = ("pending", "relevant", "irrelevant")
 # Muted classic tones; always shown together with the text label, never colour alone.
-EVENT_COLOURS = {"new": "#B23A48", "suspected": "#C9822B", "historical": "#8A8A8A", "unclear": "#3B6EA5"}
+EVENT_COLOURS = {"new": "#D64545", "suspected": "#E0870B", "historical": "#8792A2", "unclear": "#2F6FD1"}
 EVENT_LABELS = {"new": "New report", "suspected": "Suspected", "historical": "Historical", "unclear": "Unclear"}
-OFFICIAL_COLOUR = "#2E6B4F"   # official surveillance records: green squares (news reports are circles)
+OFFICIAL_COLOUR = "#13895B"   # official surveillance records: green squares (news reports are circles)
 VIEWS = {
     "relevant": "Relevant outbreak reports",
     "review": "Relevant, location needs review",
@@ -163,23 +163,23 @@ def popup_html(group: pd.DataFrame) -> str:
     status = first["event_status"] if first["event_status"] in EVENT_COLOURS else "unclear"
     diseases = ", ".join(sorted({d for ds in group["diseases"] for d in ds})) or "—"
     published = published_ist(first["published_at"])
-    review = (" · <span style='color:#B23A48;font-weight:600'>location needs review</span>"
+    review = (" · <span style='color:#D64545;font-weight:600'>location needs review</span>"
               if bool(first["location_review"]) else "")
     sources = "".join(
         f"<li style='margin:2px 0'><a href=\"{_esc(r.article_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
-        f"style='color:#1F3A5F'>{_esc(r.source_name)}</a></li>" for r in group.itertuples())
+        f"style='color:#1554A6;font-weight:500'>{_esc(r.source_name)}</a></li>" for r in group.itertuples())
     return (
-        "<div style=\"font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#222831;width:320px\">"
-        f"<div style='background:{EVENT_COLOURS[status]};color:#fff;padding:5px 10px;border-radius:4px 4px 0 0;"
+        "<div style=\"font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:13px;color:#172033;width:320px\">"
+        f"<div style='background:{EVENT_COLOURS[status]};color:#fff;padding:6px 12px;border-radius:8px 8px 0 0;font-weight:600;"
         f"font-size:11px;letter-spacing:.06em;text-transform:uppercase'>{_esc(diseases)} · {EVENT_LABELS[status]}</div>"
-        "<div style='padding:8px 10px 4px 10px'>"
-        f"<div style=\"font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.3;margin-bottom:6px\">"
+        "<div style='padding:10px 12px 6px 12px'>"
+        f"<div style=\"font-size:15px;font-weight:600;line-height:1.35;margin-bottom:8px\">"
         f"{_esc(first['headline'])}</div>"
         f"<div style='margin:2px 0'>📍 {_esc(first['place'])}</div>"
-        f"<div style='color:#6B6B6B;font-size:12px;margin:0 0 4px 20px'>{_esc(first['location_level'])} level · "
+        f"<div style='color:#5A687D;font-size:12px;margin:0 0 4px 20px'>{_esc(first['location_level'])} level · "
         f"{_esc(first['location_confidence'])} confidence{review}</div>"
-        f"<div style='margin:2px 0'>🗓 {published.strftime('%d %b %Y, %H:%M IST') if published else '—'}</div>"
-        f"<div style='margin-top:8px;color:#6B6B6B;font-size:11px;letter-spacing:.06em;text-transform:uppercase'>"
+        f"<div style='margin:2px 0'>📅 {published.strftime('%d %b %Y, %H:%M IST') if published else '—'}</div>"
+        f"<div style='margin-top:8px;color:#5A687D;font-size:11px;letter-spacing:.06em;text-transform:uppercase'>"
         f"Reported by</div><ul style='margin:2px 0 6px 18px;padding:0'>{sources}</ul></div></div>")
 
 
@@ -254,15 +254,15 @@ def official_popup_html(r) -> str:
     cases = "—" if r.cases is None or pd.isna(r.cases) else f"{int(r.cases)}"
     place = ", ".join(p for p in (r.district, r.state) if isinstance(p, str)) or "—"
     return (
-        "<div style=\"font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#222831;width:320px\">"
-        f"<div style='background:{OFFICIAL_COLOUR};color:#fff;padding:5px 10px;border-radius:4px 4px 0 0;"
+        "<div style=\"font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:13px;color:#172033;width:320px\">"
+        f"<div style='background:{OFFICIAL_COLOUR};color:#fff;padding:6px 12px;border-radius:8px 8px 0 0;font-weight:600;"
         "font-size:11px;letter-spacing:.06em;text-transform:uppercase'>Official report · IDSP</div>"
-        "<div style='padding:8px 10px 4px 10px'>"
-        f"<div style=\"font-family:Georgia,'Times New Roman',serif;font-size:15px;margin-bottom:6px\">"
+        "<div style='padding:10px 12px 6px 12px'>"
+        f"<div style=\"font-size:15px;font-weight:600;margin-bottom:8px\">"
         f"{_esc(r.disease_raw)}: {cases} case(s){deaths}</div>"
         f"<div style='margin:2px 0'>📍 {_esc(place)}</div>"
-        f"<div style='margin:2px 0'>🗓 Started {day(r.onset_date)} · reported {day(r.reported_date)}</div>"
+        f"<div style='margin:2px 0'>📅 Started {day(r.onset_date)} · reported {day(r.reported_date)}</div>"
         f"<div style='margin:2px 0'>Status: {_esc(r.status)}</div>"
-        f"<div style='margin:6px 0 2px 0;color:#6B6B6B;font-size:12px'>ID {_esc(r.report_id)} · {_esc(r.week_label)}"
+        f"<div style='margin:6px 0 2px 0;color:#5A687D;font-size:12px'>ID {_esc(r.report_id)} · {_esc(r.week_label)}"
         f" · <a href=\"{_esc(r.report_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
-        "style='color:#1F3A5F'>weekly report (PDF)</a></div></div></div>")
+        "style='color:#1554A6;font-weight:500'>weekly report (PDF)</a></div></div></div>")
