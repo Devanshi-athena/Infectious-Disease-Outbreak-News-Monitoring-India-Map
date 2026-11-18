@@ -201,8 +201,8 @@ with st.sidebar:
     view = st.radio("Show", list(VIEWS), format_func=VIEWS.get, index=0, label_visibility="collapsed")
     st.markdown('<div class="section">Filters</div>', unsafe_allow_html=True)
     disease_config = load_disease_config()
-    group_of = {d.name: d.category for d in disease_config.diseases}
-    groups = list(dict.fromkeys(d.category for d in disease_config.diseases))  # config order
+    group_of = {d.name: d.category for d in disease_config.monitored}
+    groups = list(dict.fromkeys(d.category for d in disease_config.monitored))  # config order
     chosen_groups = st.multiselect("Disease group", groups, placeholder="All disease groups")
     disease_options = [d for d in opts["diseases"] if not chosen_groups or group_of.get(d) in chosen_groups]
     chosen_diseases = st.multiselect("Disease", disease_options, placeholder="All diseases")

@@ -1,94 +1,80 @@
-﻿# Diseases to monitor. Edit this file to add, remove or change diseases; no code changes needed.
-# Stored articles are re-tagged automatically on the next run after a change.
+﻿# Diseases monitored: the list of the Integrated Disease Surveillance Programme (IDSP), as reported on the
+# IHIP portal. Edit this file to add, remove or change diseases; no code changes needed. Stored articles are
+# re-tagged automatically on the next run after a change.
 #
-#   category      Disease group, used for the "Disease group" filter on the dashboard.
-#   keywords      Disease names, alternative names and spellings that mark an article as being about
-#                 the disease. Matched as whole words, case-insensitive, in the headline and article text.
-#                 Outbreak words ("outbreak", "surge in cases", "cluster", "suspected cases", "deaths")
-#                 are NOT keywords: they are relevance cues in config/relevance.yaml, used only to judge
-#                 whether an article about a disease reports an outbreak.
-#   search_terms  Terms used to open each site's topic/search page (sources.yaml -> keyword_pages).
-#                 Keep these short and broad. Defaults to the first keyword if omitted.
+# Source of the list: IHIP reporting forms S (syndromic), P (presumptive) and L (laboratory-confirmed), and
+# the IDSP "P form / L form Case Definitions 2024" (NCDC; published by NHM Himachal Pradesh,
+# https://nhm.hp.gov.in/idsp/reporting-format). Names follow the forms. Two entries are not on the forms:
+# Food poisoning (the most frequent term in IDSP's own weekly outbreak reports) and COVID-19 (kept on
+# purpose). Bird flu in animals is recognised but not monitored (animal health, not an IDSP condition).
+#
+#   name          IDSP condition name (shown on the dashboard).
+#   code          Stable identifier. Names may be reworded; codes never change.
+#   idsp          Where it is on the IDSP list: P / L form, S form item number, or another source.
+#   category      Group for the "Disease group" filter on the dashboard.
+#   keywords      Names, alternative names and spellings that mark an article as being about the condition.
+#                 Matched as whole words, case-insensitive, in the headline and article text. Where two
+#                 overlap, the longer wins ("Japanese encephalitis" is JE, not also AES).
+#                 Outbreak words ("outbreak", "surge in cases", "deaths") are NOT keywords: they are relevance
+#                 cues in config/relevance.yaml.
+#   superseded_by A syndrome or unconfirmed form is dropped when one of these conditions is also named
+#                 ("jaundice outbreak" + "hepatitis A" -> Hepatitis A only).
+#   search_terms  Terms used to open each site's topic page (sources.yaml -> keyword_pages). Default: the first
+#                 keyword; [] for none (rare conditions, to keep the number of requests reasonable).
 #   native_keywords
-#                 The disease's names in the languages of the regional sources (regional_sources.yaml),
-#                 per language code. Only names of this disease, not general words like "fever". They are
-#                 matched in the original headline and text, and allow word endings ("डेंगू" also matches
-#                 "डेंगूने"), except words of up to 3 letters and words ending in "=", which must stand alone.
+#                 Names in the languages of the regional sources (regional_sources.yaml), per language code.
+#                 Only names of this condition, not general words like "fever". Word endings are allowed
+#                 ("डेंगू" also matches "डेंगूने"), except words of up to 3 letters and words ending in "=".
+#   monitored     false: recognised but never tagged or shown (see the end of the list).
 #
 # screening_words (end of file): general words per language (fever, epidemic, jaundice) that make a regional
-# article worth translating, without naming a disease. The English translation then decides the disease.
-# The native-language words should be reviewed by native speakers.
+# article worth translating, without naming a disease. The native-language words should be reviewed by
+# native speakers.
 
 diseases:
-  # ---------------------------------------------------------------- Vector-borne
-  - name: Dengue
-    category: Vector-borne
-    keywords: ["dengue", "dengue fever", "dengue haemorrhagic fever", "dengue hemorrhagic fever",
-               "dengue shock syndrome", "breakbone fever"]
-    search_terms: ["dengue"]
+  # ================================================================ Water- and food-borne
+  - name: Acute Diarrhoeal Disease
+    code: ADD
+    idsp: P, L (S 2.8.2)
+    category: Water- and food-borne
+    # Includes acute gastroenteritis (P form). Dysentery (blood in stool) is its own condition.
+    keywords: ["acute diarrhoeal disease", "acute diarrheal disease", "diarrhoea", "diarrhea", "gastroenteritis",
+               "acute gastroenteritis", "loose motions", "loose motion"]
+    search_terms: ["diarrhoea", "gastroenteritis"]
+    superseded_by: ["Cholera", "Shigellosis"]
     native_keywords:
-      hi: ["डेंगू"]
-      mr: ["डेंग्यू"]
-      gu: ["ડેન્ગ્યુ", "ડેન્ગ્યૂ"]
-      bn: ["ডেঙ্গু", "ডেঙ্গি"]
-      as: ["ডেংগু"]
-      te: ["డెంగ్యూ", "డెంగీ"]
-      ta: ["டெங்கு"]
-      ur: ["ڈینگی", "ڈینگو"]
-      kn: ["ಡೆಂಗ್ಯೂ", "ಡೆಂಗಿ"]
-      or: ["ଡେଙ୍ଗୁ"]
-      ml: ["ഡെങ്കി"]
-      pa: ["ਡੇਂਗੂ"]
+      hi: ["डायरिया", "उल्टी दस्त"]
+      mr: ["अतिसार"]
+      bn: ["ডায়রিয়া"]
+      as: ["ডায়েৰিয়া"]
+      te: ["డయేరియా", "అతిసార"]
+      ta: ["வயிற்றுப்போக்கு"]
+      ur: ["اسہال"]
+      kn: ["ಅತಿಸಾರ"]
+      or: ["ଡାଇରିଆ", "ଝାଡ଼ାବାନ୍ତି"]
+      ml: ["വയറിളക്കം"]
+      pa: ["ਡਾਇਰੀਆ", "ਦਸਤ"]
 
-  - name: Malaria
-    category: Vector-borne
-    keywords: ["malaria", "cerebral malaria", "plasmodium", "falciparum", "vivax"]
-    search_terms: ["malaria"]
-    native_keywords:
-      hi: ["मलेरिया"]
-      mr: ["मलेरिया"]
-      gu: ["મેલેરિયા"]
-      bn: ["ম্যালেরিয়া"]
-      as: ["মেলেৰিয়া", "ম্যালেৰিয়া"]
-      te: ["మలేరియా"]
-      ta: ["மலேரியா"]
-      ur: ["ملیریا"]
-      kn: ["ಮಲೇರಿಯಾ"]
-      or: ["ମ୍ୟାଲେରିଆ"]
-      ml: ["മലേറിയ"]
-      pa: ["ਮਲੇਰੀਆ"]
+  - name: Food poisoning
+    code: FOOD_POISONING
+    idsp: IDSP weekly outbreak reports (not on the S/P/L forms)
+    category: Water- and food-borne
+    keywords: ["food poisoning", "foodborne illness", "food-borne illness"]
+    search_terms: ["food poisoning"]
 
-  - name: Chikungunya
-    category: Vector-borne
-    keywords: ["chikungunya", "chikun gunya"]
-    search_terms: ["chikungunya"]
-    native_keywords:
-      hi: ["चिकनगुनिया"]
-      mr: ["चिकनगुनिया"]
-      gu: ["ચિકનગુનિયા"]
-      bn: ["চিকুনগুনিয়া"]
-      te: ["చికున్‌గున్యా"]
-      ta: ["சிக்குன்குனியா"]
-      kn: ["ಚಿಕೂನ್ ಗುನ್ಯಾ"]
-      ml: ["ചിക്കുൻഗുനിയ"]
-      pa: ["ਚਿਕਨਗੁਨੀਆ"]
+  - name: Dysentery
+    code: DYSENTERY
+    idsp: P (S 2.8.1)
+    category: Water- and food-borne
+    keywords: ["dysentery", "bloody diarrhoea", "bloody diarrhea", "bloody stools"]
+    search_terms: []
+    superseded_by: ["Shigellosis"]
 
-  - name: Japanese Encephalitis / AES
-    category: Vector-borne
-    keywords: ["Japanese encephalitis", "acute encephalitis syndrome", "encephalitis", "AES cases", "AES deaths",
-               "brain fever", "chamki bukhar", "chandipura", "chandipura virus"]
-    search_terms: ["japanese encephalitis", "encephalitis", "chandipura"]
-    native_keywords:
-      hi: ["दिमागी बुखार", "चांदीपुरा"]
-      gu: ["ચાંદીપુરા"]
-      as: ["জাপানীজ এনকেফেলাইটিছ"]
-      ml: ["മസ്തിഷ്ക ജ്വരം"]
-
-  # ---------------------------------------------------------------- Water- and food-borne
   - name: Cholera
+    code: CHOLERA
+    idsp: L
     category: Water- and food-borne
     keywords: ["cholera", "vibrio cholerae"]
-    search_terms: ["cholera"]
     native_keywords:
       hi: ["हैजा"]
       mr: ["कॉलरा"]
@@ -103,28 +89,26 @@ diseases:
       ml: ["കോളറ"]
       pa: ["ਹੈਜ਼ਾ"]
 
-  - name: Acute Diarrhoeal Disease
+  - name: Shigellosis
+    code: SHIGELLOSIS
+    idsp: L
     category: Water- and food-borne
-    # Dysentery is a specific form, not acute diarrhoeal disease in general, so it is not a keyword.
-    keywords: ["acute diarrhoeal disease", "acute diarrheal disease", "diarrhoea", "diarrhea", "gastroenteritis",
-               "food poisoning", "loose motions"]
-    search_terms: ["diarrhoea", "gastroenteritis", "food poisoning"]
-    native_keywords:
-      hi: ["डायरिया", "उल्टी दस्त"]
-      mr: ["अतिसार"]
-      bn: ["ডায়রিয়া"]
-      as: ["ডায়েৰিয়া"]
-      te: ["డయేరియా", "అతిసార"]
-      ta: ["வயிற்றுப்போக்கு"]
-      ur: ["اسہال"]
-      kn: ["ಅತಿಸಾರ"]
-      or: ["ଡାଇରିଆ", "ଝାଡ଼ାବାନ୍ତି"]
-      ml: ["വയറിളക്കം"]
-      pa: ["ਡਾਇਰੀਆ", "ਦਸਤ"]
+    keywords: ["shigellosis", "shigella"]
+    search_terms: []
 
-  - name: Typhoid
+  - name: Non-typhoidal salmonellosis
+    code: SALMONELLOSIS
+    idsp: P
     category: Water- and food-borne
-    keywords: ["typhoid", "typhoid fever", "enteric fever", "salmonella typhi"]
+    # "salmonella typhi" is typhoid (the longer keyword wins).
+    keywords: ["salmonellosis", "non-typhoidal salmonella", "salmonella"]
+    search_terms: []
+
+  - name: Enteric fever (Typhoid)
+    code: TYPHOID
+    idsp: P, L
+    category: Water- and food-borne
+    keywords: ["typhoid", "typhoid fever", "enteric fever", "salmonella typhi", "paratyphoid"]
     search_terms: ["typhoid"]
     native_keywords:
       hi: ["टाइफाइड"]
@@ -139,100 +123,163 @@ diseases:
       ml: ["ടൈഫോയ്ഡ്"]
       pa: ["ਟਾਈਫਾਈਡ"]
 
-  - name: Hepatitis A / E
+  - name: Acute Viral Hepatitis
+    code: AVH
+    idsp: P
     category: Water- and food-borne
-    # Only hepatitis A or E named as such. Jaundice or "viral hepatitis" alone doesn't identify the type,
-    # the same rule as for the official reports (official_diseases.yaml).
-    keywords: ["hepatitis A", "hepatitis E", "hepatitis-A", "hepatitis-E", "hepatitis A and E", "HAV", "HEV"]
+    # Hepatitis named without its type. Dropped when hepatitis A or E is named.
+    keywords: ["acute viral hepatitis", "viral hepatitis", "acute hepatitis"]
     search_terms: ["hepatitis"]
+    superseded_by: ["Hepatitis A", "Hepatitis E"]
 
-  # ---------------------------------------------------------------- Emerging and zoonotic
-  - name: Nipah
-    category: Emerging and zoonotic
-    keywords: ["nipah", "nipah virus"]
-    search_terms: ["nipah"]
+  - name: Hepatitis A
+    code: HEP_A
+    idsp: L
+    category: Water- and food-borne
+    keywords: ["hepatitis A", "hepatitis-A", "HAV"]
+    search_terms: []
+
+  - name: Hepatitis E
+    code: HEP_E
+    idsp: L
+    category: Water- and food-borne
+    keywords: ["hepatitis E", "hepatitis-E", "HEV"]
+    search_terms: []
+
+  # ================================================================ Vector-borne
+  - name: Malaria
+    code: MALARIA
+    idsp: P, L (S 2.11)
+    category: Vector-borne
+    keywords: ["malaria", "cerebral malaria", "plasmodium", "falciparum", "vivax"]
     native_keywords:
-      hi: ["निपाह"]
-      bn: ["নিপা="]
-      te: ["నిపా="]
-      ta: ["நிபா="]
-      ur: ["نپاہ"]
-      kn: ["ನಿಪಾ="]
-      ml: ["നിപ"]
+      hi: ["मलेरिया"]
+      mr: ["मलेरिया"]
+      gu: ["મેલેરિયા"]
+      bn: ["ম্যালেরিয়া"]
+      as: ["মেলেৰিয়া", "ম্যালেৰিয়া"]
+      te: ["మలేరియా"]
+      ta: ["மலேரியா"]
+      ur: ["ملیریا"]
+      kn: ["ಮಲೇರಿಯಾ"]
+      or: ["ମ୍ୟାଲେରିଆ"]
+      ml: ["മലേറിയ"]
+      pa: ["ਮਲੇਰੀਆ"]
 
-  - name: Leptospirosis
-    category: Emerging and zoonotic
-    keywords: ["leptospirosis", "rat fever", "Weil's disease"]
-    search_terms: ["leptospirosis", "rat fever"]
+  - name: Dengue
+    code: DENGUE
+    idsp: P, L
+    category: Vector-borne
+    keywords: ["dengue", "dengue fever", "dengue haemorrhagic fever", "dengue hemorrhagic fever",
+               "dengue shock syndrome", "breakbone fever"]
     native_keywords:
-      mr: ["लेप्टो"]
-      ta: ["எலிக்காய்ச்சல்"]
-      kn: ["ಇಲಿ ಜ್ವರ"]
-      ml: ["എലിപ്പനി"]
+      hi: ["डेंगू"]
+      mr: ["डेंग्यू"]
+      gu: ["ડેન્ગ્યુ", "ડેન્ગ્યૂ"]
+      bn: ["ডেঙ্গু", "ডেঙ্গি"]
+      as: ["ডেংগু"]
+      te: ["డెంగ్యూ", "డెంగీ"]
+      ta: ["டெங்கு"]
+      ur: ["ڈینگی", "ڈینگو"]
+      kn: ["ಡೆಂಗ್ಯೂ", "ಡೆಂಗಿ"]
+      or: ["ଡେଙ୍ଗୁ"]
+      ml: ["ഡെങ്കി"]
+      pa: ["ਡੇਂਗੂ"]
 
-  - name: Scrub Typhus
-    category: Emerging and zoonotic
-    keywords: ["scrub typhus", "bush typhus", "tsutsugamushi"]
-    search_terms: ["scrub typhus"]
+  - name: Chikungunya
+    code: CHIKUNGUNYA
+    idsp: P, L
+    category: Vector-borne
+    keywords: ["chikungunya", "chikun gunya"]
     native_keywords:
-      hi: ["स्क्रब टाइफस"]
-      mr: ["स्क्रब टायफस"]
-      bn: ["স্ক্রাব টাইফাস"]
-      te: ["స్క్రబ్ టైఫస్"]
-      ta: ["ஸ்க்ரப் டைபஸ்"]
-      or: ["ସ୍କ୍ରବ ଟାଇଫସ"]
-      ml: ["ചെള്ളുപനി"]
+      hi: ["चिकनगुनिया"]
+      mr: ["चिकनगुनिया"]
+      gu: ["ચિકનગુનિયા"]
+      bn: ["চিকুনগুনিয়া"]
+      te: ["చికున్‌గున్యా"]
+      ta: ["சிக்குன்குனியா"]
+      kn: ["ಚಿಕೂನ್ ಗುನ್ಯಾ"]
+      ml: ["ചിക്കുൻഗുനിയ"]
+      pa: ["ਚਿਕਨਗੁਨੀਆ"]
 
-  - name: Kyasanur Forest Disease (KFD)
-    category: Emerging and zoonotic
-    keywords: ["Kyasanur Forest Disease", "Kyasanur Forest", "KFD", "monkey fever"]
-    search_terms: ["monkey fever", "kyasanur forest disease"]
+  - name: Kala-azar
+    code: KALA_AZAR
+    idsp: P, L
+    category: Vector-borne
+    keywords: ["kala-azar", "kala azar", "kalaazar", "visceral leishmaniasis"]
+    search_terms: []
+
+  - name: Acute Encephalitis Syndrome
+    code: AES
+    idsp: P
+    category: Vector-borne
+    # Encephalitis or "brain fever" without a confirmed cause, including Chandipura virus (reported under
+    # AES). Dropped when Japanese encephalitis, West Nile virus or Nipah is named.
+    keywords: ["acute encephalitis syndrome", "acute encephalitic syndrome", "encephalitis", "AES cases",
+               "AES deaths", "brain fever", "chamki bukhar", "chandipura", "chandipura virus"]
+    search_terms: ["encephalitis", "chandipura"]
+    superseded_by: ["Japanese Encephalitis", "West Nile Virus", "Nipah Virus Disease"]
     native_keywords:
-      kn: ["ಮಂಗನ ಕಾಯಿಲೆ"]
+      hi: ["दिमागी बुखार", "चांदीपुरा"]
+      gu: ["ચાંદીપુરા"]
+      ml: ["മസ്തിഷ്ക ജ്വരം"]
 
-  - name: Rabies
-    category: Emerging and zoonotic
-    keywords: ["rabies", "rabid", "hydrophobia"]
-    search_terms: ["rabies"]
+  - name: Japanese Encephalitis
+    code: JE
+    idsp: L
+    category: Vector-borne
+    keywords: ["Japanese encephalitis", "JE cases", "JE deaths"]
+    search_terms: ["japanese encephalitis"]
     native_keywords:
-      hi: ["रेबीज"]
-      mr: ["रेबीज"]
-      gu: ["હડકવા"]
-      bn: ["জলাতঙ্ক"]
-      te: ["రేబిస్"]
-      ta: ["ரேபிஸ்", "வெறிநாய்க்கடி"]
-      ur: ["ریبیز"]
-      kn: ["ರೇಬಿಸ್"]
-      or: ["ରେବିଜ"]
-      ml: ["പേവിഷ"]
+      as: ["জাপানীজ এনকেফেলাইটিছ"]
 
-  - name: Other zoonotic outbreaks
-    category: Emerging and zoonotic
-    # "plague" alone is mostly a figure of speech ("plagued by"), so only the disease forms are used.
-    keywords: ["bird flu", "avian influenza", "avian flu", "H5N1", "H5N8", "anthrax", "brucellosis",
-               "bubonic plague", "pneumonic plague", "plague outbreak", "plague case", "plague cases",
-               "Crimean-Congo haemorrhagic fever", "Crimean-Congo hemorrhagic fever", "CCHF", "mpox", "monkeypox",
-               "zoonotic"]
-    search_terms: ["bird flu", "anthrax", "mpox"]
-    native_keywords:
-      hi: ["बर्ड फ्लू"]
-      mr: ["बर्ड फ्लू"]
-      bn: ["বার্ড ফ্লু"]
-      as: ["বাৰ্ড ফ্লু"]
-      te: ["బర్డ్ ఫ్లూ"]
-      ta: ["பறவைக் காய்ச்சல்", "பறவைக்காய்ச்சல்"]
-      ur: ["برڈ فلو"]
-      kn: ["ಹಕ್ಕಿ ಜ್ವರ"]
-      or: ["ବାର୍ଡ ଫ୍ଲୁ"]
-      ml: ["പക്ഷിപ്പനി"]
+  - name: West Nile Virus
+    code: WEST_NILE
+    idsp: L
+    category: Vector-borne
+    keywords: ["West Nile virus", "West Nile fever", "West Nile"]
+    search_terms: []
 
-  # ---------------------------------------------------------------- Respiratory and vaccine-preventable
-  - name: Influenza (H1N1 / H3N2)
-    category: Respiratory and vaccine-preventable
+  - name: Zika Virus Disease
+    code: ZIKA
+    idsp: P, L
+    category: Vector-borne
+    keywords: ["Zika", "Zika virus"]
+    search_terms: []
+
+  - name: Yellow Fever
+    code: YELLOW_FEVER
+    idsp: P, L
+    category: Vector-borne
+    keywords: ["yellow fever"]
+    search_terms: []
+
+  # ================================================================ Respiratory
+  - name: Influenza-like illness (ILI)
+    code: ILI
+    idsp: P
+    category: Respiratory
+    keywords: ["influenza-like illness", "influenza like illness", "ILI cases"]
+    search_terms: []
+    superseded_by: ["Influenza", "COVID-19"]
+
+  - name: Severe acute respiratory infection (SARI)
+    code: SARI
+    idsp: P
+    category: Respiratory
+    keywords: ["severe acute respiratory infection", "SARI cases", "SARI patients"]
+    search_terms: []
+    superseded_by: ["Influenza", "COVID-19"]
+
+  - name: Influenza
+    code: INFLUENZA
+    idsp: L
+    category: Respiratory
+    # Seasonal and pandemic influenza in people (H1N1, H3N2, ...). Bird flu in animals is not monitored.
     keywords: ["influenza", "swine flu", "seasonal flu", "flu cases", "flu outbreak", "H1N1", "H3N2",
                "influenza A", "influenza B"]
     search_terms: ["influenza", "swine flu", "h1n1", "h3n2"]
-    native_keywords:
+    native_keywords:   # swine flu
       hi: ["स्वाइन फ्लू"]
       mr: ["स्वाइन फ्लू"]
       gu: ["સ્વાઈન ફ્લૂ"]
@@ -243,7 +290,9 @@ diseases:
       pa: ["ਸਵਾਈਨ ਫਲੂ"]
 
   - name: COVID-19
-    category: Respiratory and vaccine-preventable
+    code: COVID19
+    idsp: not on the S/P/L forms (kept on purpose)
+    category: Respiratory
     keywords: ["COVID-19", "COVID", "coronavirus", "SARS-CoV-2", "novel coronavirus"]
     search_terms: ["covid"]
     native_keywords:
@@ -260,9 +309,19 @@ diseases:
       ml: ["കോവിഡ്"]
       pa: ["ਕੋਰੋਨਾ"]
 
+  - name: MERS-CoV
+    code: MERS
+    idsp: P, L
+    category: Respiratory
+    keywords: ["MERS", "MERS-CoV", "Middle East respiratory syndrome"]
+    search_terms: []
+
+  # ================================================================ Vaccine-preventable
   - name: Measles
-    category: Respiratory and vaccine-preventable
-    keywords: ["measles", "rubella", "measles-rubella"]
+    code: MEASLES
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["measles"]
     search_terms: ["measles"]
     native_keywords:
       hi: ["खसरा"]
@@ -276,29 +335,278 @@ diseases:
       ml: ["അഞ്ചാംപനി"]
       pa: ["ਖਸਰਾ"]
 
-  - name: Diphtheria
-    category: Respiratory and vaccine-preventable
-    keywords: ["diphtheria"]
-    search_terms: ["diphtheria"]
+  - name: Rubella
+    code: RUBELLA
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["rubella", "German measles"]
+    search_terms: []
 
-  # ---------------------------------------------------------------- Other epidemic-prone
-  - name: Jaundice (cause not confirmed)
-    category: Other epidemic-prone
-    # Jaundice outbreaks where the cause isn't named. Outbreak phrasing only: plain "jaundice" also matches
-    # liver disease and newborn care. Dropped when hepatitis A or E is named (the cause is then confirmed).
+  - name: Diphtheria
+    code: DIPHTHERIA
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["diphtheria"]
+
+  - name: Pertussis
+    code: PERTUSSIS
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["pertussis", "whooping cough"]
+    search_terms: []
+
+  - name: Polio
+    code: POLIO
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["polio", "poliomyelitis", "poliovirus"]
+    search_terms: []
+
+  - name: Mumps
+    code: MUMPS
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["mumps"]
+    search_terms: []
+
+  - name: Chickenpox
+    code: CHICKENPOX
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["chickenpox", "chicken pox", "varicella"]
+    search_terms: []
+
+  - name: Meningitis
+    code: MENINGITIS
+    idsp: P, L
+    category: Vaccine-preventable
+    keywords: ["meningitis", "meningococcal", "meningococcal meningitis", "meningococcal disease"]
+    search_terms: []
+
+  # ================================================================ Zoonotic
+  - name: Human Rabies
+    code: RABIES
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["rabies", "rabid", "hydrophobia", "human rabies"]
+    native_keywords:
+      hi: ["रेबीज"]
+      mr: ["रेबीज"]
+      gu: ["હડકવા"]
+      bn: ["জলাতঙ্ক"]
+      te: ["రేబిస్"]
+      ta: ["ரேபிஸ்", "வெறிநாய்க்கடி"]
+      ur: ["ریبیز"]
+      kn: ["ರೇಬಿಸ್"]
+      or: ["ରେବିଜ"]
+      ml: ["പേവിഷ"]
+
+  - name: Leptospirosis
+    code: LEPTOSPIROSIS
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["leptospirosis", "rat fever", "Weil's disease"]
+    search_terms: ["leptospirosis", "rat fever"]
+    native_keywords:
+      mr: ["लेप्टो"]
+      ta: ["எலிக்காய்ச்சல்"]
+      kn: ["ಇಲಿ ಜ್ವರ"]
+      ml: ["എലിപ്പനി"]
+
+  - name: Scrub Typhus
+    code: SCRUB_TYPHUS
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["scrub typhus", "bush typhus", "tsutsugamushi"]
+    native_keywords:
+      hi: ["स्क्रब टाइफस"]
+      mr: ["स्क्रब टायफस"]
+      bn: ["স্ক্রাব টাইফাস"]
+      te: ["స్క్రబ్ టైఫస్"]
+      ta: ["ஸ்க்ரப் டைபஸ்"]
+      or: ["ସ୍କ୍ରବ ଟାଇଫସ"]
+      ml: ["ചെള്ളുപനി"]
+
+  - name: Kyasanur Forest Disease (KFD)
+    code: KFD
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["Kyasanur Forest Disease", "Kyasanur Forest", "KFD", "monkey fever"]
+    search_terms: ["monkey fever", "kyasanur forest disease"]
+    native_keywords:
+      kn: ["ಮಂಗನ ಕಾಯಿಲೆ"]
+
+  - name: Nipah Virus Disease
+    code: NIPAH
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["nipah", "nipah virus"]
+    native_keywords:   # "=": whole word only (Bengali "নিপাত" means destruction)
+      hi: ["निपाह"]
+      bn: ["নিপা="]
+      te: ["నిపా="]
+      ta: ["நிபா="]
+      ur: ["نپاہ"]
+      kn: ["ನಿಪಾ="]
+      ml: ["നിപ"]
+
+  - name: Brucellosis
+    code: BRUCELLOSIS
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["brucellosis", "brucella"]
+    search_terms: []
+
+  - name: Anthrax
+    code: ANTHRAX
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["anthrax"]
+
+  - name: Plague
+    code: PLAGUE
+    idsp: P, L
+    category: Zoonotic
+    # "plague" alone is mostly a figure of speech ("plagued by"), so only the disease forms are used.
+    keywords: ["bubonic plague", "pneumonic plague", "septicaemic plague", "septicemic plague", "plague outbreak",
+               "plague case", "plague cases"]
+    search_terms: []
+
+  - name: Crimean-Congo Haemorrhagic Fever (CCHF)
+    code: CCHF
+    idsp: P, L
+    category: Zoonotic
+    keywords: ["Crimean-Congo haemorrhagic fever", "Crimean-Congo hemorrhagic fever", "CCHF", "Congo fever"]
+    search_terms: []
+
+  - name: Mpox
+    code: MPOX
+    idsp: P, L (monkeypox)
+    category: Zoonotic
+    keywords: ["mpox", "monkeypox"]
+    search_terms: ["mpox"]
+
+  # ================================================================ Imported / viral haemorrhagic fevers
+  - name: Ebola Virus Disease
+    code: EBOLA
+    idsp: P, L
+    category: Imported and haemorrhagic fevers
+    keywords: ["Ebola", "Ebola virus"]
+    search_terms: []
+
+  - name: Marburg Virus Disease
+    code: MARBURG
+    idsp: P, L
+    category: Imported and haemorrhagic fevers
+    keywords: ["Marburg virus", "Marburg"]
+    search_terms: []
+
+  # ================================================================ Syndromes (S form)
+  # For reports that describe symptoms without a diagnosis. Each is dropped when a diagnosis is named.
+  - name: Fever (no diagnosis)
+    code: S_FEVER
+    idsp: S 2.1 / 2.2 (only fever)
+    category: Syndromes (S form)
+    keywords: ["mystery fever", "mysterious fever", "unknown fever", "unidentified fever", "fever outbreak",
+               "viral fever outbreak", "fever cluster", "acute febrile illness", "fever cases surge"]
+    search_terms: ["mystery fever"]
+    superseded_by: ["Dengue", "Malaria", "Chikungunya", "Enteric fever (Typhoid)", "Scrub Typhus", "Leptospirosis",
+                    "Influenza", "COVID-19", "Kyasanur Forest Disease (KFD)", "Measles", "Chickenpox",
+                    "Acute Encephalitis Syndrome", "Japanese Encephalitis"]
+
+  - name: Fever with rash
+    code: S_FEVER_RASH
+    idsp: S 2.3
+    category: Syndromes (S form)
+    keywords: ["fever with rash", "fever and rash"]
+    search_terms: []
+    superseded_by: ["Measles", "Rubella", "Chickenpox", "Dengue", "Chikungunya", "Mpox"]
+
+  - name: Fever with bleeding
+    code: S_FEVER_BLEEDING
+    idsp: S 2.4
+    category: Syndromes (S form)
+    keywords: ["fever with bleeding", "haemorrhagic fever", "hemorrhagic fever"]
+    search_terms: []
+    superseded_by: ["Dengue", "Crimean-Congo Haemorrhagic Fever (CCHF)", "Kyasanur Forest Disease (KFD)",
+                    "Ebola Virus Disease", "Marburg Virus Disease", "Yellow Fever"]
+
+  - name: Fever with altered sensorium
+    code: S_FEVER_SENSORIUM
+    idsp: S 2.5
+    category: Syndromes (S form)
+    keywords: ["fever with altered sensorium", "altered sensorium"]
+    search_terms: []
+    superseded_by: ["Acute Encephalitis Syndrome", "Japanese Encephalitis", "Malaria", "Meningitis",
+                    "Nipah Virus Disease", "West Nile Virus"]
+
+  - name: Jaundice (< 4 weeks)
+    code: S_JAUNDICE
+    idsp: S 2.9
+    category: Syndromes (S form)
+    # Jaundice outbreaks where the cause is not named. Outbreak phrasing only: plain "jaundice" also matches
+    # liver disease and newborn care.
     keywords: ["jaundice outbreak", "outbreak of jaundice", "jaundice cases", "jaundice case", "cases of jaundice",
                "jaundice deaths", "jaundice death", "died of jaundice", "jaundice patients", "jaundice spread",
                "jaundice cluster"]
     search_terms: ["jaundice"]
-    superseded_by: ["Hepatitis A / E"]
+    superseded_by: ["Hepatitis A", "Hepatitis E", "Acute Viral Hepatitis"]
 
-  - name: Unexplained fever / deaths / clusters
-    category: Other epidemic-prone
-    keywords: ["mystery fever", "mysterious fever", "unknown fever", "unidentified fever", "mystery illness",
-               "mysterious illness", "mystery disease", "mysterious disease", "unknown disease",
+  - name: Acute Flaccid Paralysis (AFP)
+    code: S_AFP
+    idsp: S 2.10
+    category: Syndromes (S form)
+    keywords: ["acute flaccid paralysis", "AFP case", "AFP cases"]
+    search_terms: []
+    superseded_by: ["Polio"]
+
+  - name: Animal bite
+    code: S_ANIMAL_BITE
+    idsp: S 2.12
+    category: Syndromes (S form)
+    keywords: ["dog bite", "dog bites", "dog-bite", "dog-bite cases", "animal bite", "animal bites",
+               "stray dog attack", "stray dog attacks", "monkey bite", "monkey bites"]
+    search_terms: ["dog bite"]
+    superseded_by: ["Human Rabies"]
+
+  - name: Snake bite
+    code: S_SNAKE_BITE
+    idsp: S 2.13
+    category: Syndromes (S form)
+    keywords: ["snake bite", "snakebite", "snake bites", "snakebites"]
+    search_terms: []
+
+  - name: Other unusual syndrome or health condition
+    code: S_UNUSUAL
+    idsp: P / L (other unusual state-specific syndrome or health condition)
+    category: Syndromes (S form)
+    # Unexplained illness or deaths, and conditions IDSP reports outside the list (e.g. Guillain-Barre syndrome,
+    # hand, foot and mouth disease).
+    keywords: ["mystery illness", "mysterious illness", "mystery disease", "mysterious disease", "unknown disease",
                "unidentified disease", "unexplained illness", "unexplained deaths", "mysterious deaths",
-               "mystery deaths", "fever outbreak", "viral fever outbreak", "fever cluster", "acute febrile illness"]
-    search_terms: ["mystery fever", "mysterious disease"]
+               "mystery deaths", "Guillain-Barre syndrome", "Guillain-Barré syndrome", "GBS cases",
+               "hand, foot and mouth disease", "hand foot and mouth disease", "hand-foot-mouth disease"]
+    search_terms: ["mysterious disease"]
+
+  # ================================================================ Not monitored
+  - name: Bird flu in animals (not monitored)
+    code: NOT_MONITORED_BIRD_FLU
+    idsp: not an IDSP condition (animal health)
+    category: Not monitored
+    monitored: false
+    # Recognised so that "influenza" inside "avian influenza" is not counted as human influenza.
+    keywords: ["bird flu", "avian influenza", "avian flu", "H5N1", "H5N8", "highly pathogenic avian influenza"]
+    native_keywords:
+      hi: ["बर्ड फ्लू"]
+      mr: ["बर्ड फ्लू"]
+      bn: ["বার্ড ফ্লু"]
+      as: ["বাৰ্ড ফ্লু"]
+      te: ["బర్డ్ ఫ్లూ"]
+      ta: ["பறவைக் காய்ச்சல்", "பறவைக்காய்ச்சல்"]
+      ur: ["برڈ فلو"]
+      kn: ["ಹಕ್ಕಿ ಜ್ವರ"]
+      or: ["ବାର୍ଡ ଫ୍ଲୁ"]
+      ml: ["പക്ഷിപ്പനി"]
 
 # General words that make a regional article worth translating: fever, epidemic, jaundice, loose motions.
 # Per language; they apply only to sources in that language. They never tag a disease by themselves.

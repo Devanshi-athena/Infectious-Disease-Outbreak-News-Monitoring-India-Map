@@ -129,12 +129,20 @@ def test_dashboard_official_layer():
 def test_disease_map_maps_only_listed_terms():
     from outbreak_monitor.official import DiseaseMap
     m = DiseaseMap()
-    assert m.diseases("Suspected Typhoid") == ["Typhoid"]
+    assert m.diseases("Suspected Typhoid") == ["Enteric fever (Typhoid)"]
     assert m.diseases("Malaria (P. falciparum)") == ["Malaria"]
     assert m.diseases("Scrub Typhus & Dengue") == ["Scrub Typhus", "Dengue"]
-    assert m.diseases("Hepatitis A & E") == ["Hepatitis A / E"]
-    assert m.diseases("Acute Encephalitic Syndrome") == ["Japanese Encephalitis / AES"]
-    assert m.diseases("Fever") == m.diseases("Only Fever < 7 days") == ["Unexplained fever / deaths / clusters"]
-    assert m.diseases("Jaundice") == ["Jaundice (cause not confirmed)"]
-    for term in ("Acute Hepatitis", "Dysentery", "Shigellosis", "Fever with Rash", "Chickenpox"):
-        assert m.diseases(term) == [], term          # kept under the report's own term
+    assert m.diseases("Hepatitis A & E") == ["Hepatitis A", "Hepatitis E"]          # one term, two conditions
+    assert m.diseases("Acute Encephalitic Syndrome") == ["Acute Encephalitis Syndrome"]
+    assert m.diseases("Chandipura Virus") == ["Acute Encephalitis Syndrome"]
+    assert m.diseases("Japanese Encephalitis") == ["Japanese Encephalitis"]
+    assert m.diseases("Fever") == m.diseases("Only Fever < 7 days") == ["Fever (no diagnosis)"]
+    assert m.diseases("Jaundice") == ["Jaundice (< 4 weeks)"]                    # not assumed to be hepatitis A/E
+    assert m.diseases("Acute Hepatitis") == ["Acute Viral Hepatitis"]
+    assert m.diseases("Suspected Food Poisoning") == ["Food poisoning"]
+    assert m.diseases("Dysentry") == ["Dysentery"]
+    assert m.diseases("Guillain Barre Syndrome (GBS)") == ["Other unusual syndrome or health condition"]
+    for term, expected in (("Chickenpox", "Chickenpox"), ("Shigellosis", "Shigellosis"), ("Mumps", "Mumps"),
+                           ("Fever with Rash", "Fever with rash"), ("West Nile Fever", "West Nile Virus")):
+        assert m.diseases(term) == [expected], term
+    assert m.diseases("Avian Influenza") == []                                   # not an IDSP condition

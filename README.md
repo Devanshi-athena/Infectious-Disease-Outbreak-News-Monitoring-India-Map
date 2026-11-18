@@ -60,23 +60,26 @@ The Docker setup has not been tested on a machine with Docker yet.
 
 ## Diseases monitored
 
-20 disease groups in 5 categories, each with alternative names and spellings in `config/diseases.yaml`:
+The list follows the **Integrated Disease Surveillance Programme (IDSP)**: the conditions on the IHIP reporting forms S (syndromic), P (presumptive) and L (laboratory-confirmed) and in the IDSP case definitions of 2024 (NCDC; the copies used are published on [NHM Himachal Pradesh's IDSP page](https://nhm.hp.gov.in/idsp/reporting-format)). Each condition has a stable code and a note of where it is on the IDSP list, with alternative names and spellings in English and the 12 Indian languages, in `config/diseases.yaml`:
 
-| Group | Diseases |
+| Group | Conditions |
 |---|---|
-| Vector-borne | Dengue, Malaria, Chikungunya, Japanese Encephalitis / AES (incl. "brain fever", "chamki bukhar", Chandipura) |
-| Water- and food-borne | Cholera, Acute Diarrhoeal Disease (incl. gastroenteritis, food poisoning), Typhoid, Hepatitis A / E |
-| Emerging and zoonotic | Nipah, Leptospirosis ("rat fever"), Scrub Typhus, Kyasanur Forest Disease ("monkey fever"), Rabies, other zoonotic outbreaks (bird flu, anthrax, brucellosis, plague, CCHF, mpox) |
-| Respiratory and vaccine-preventable | Influenza (H1N1, H3N2, swine flu), COVID-19, Measles (incl. rubella), Diphtheria |
-| Other epidemic-prone | Jaundice (cause not confirmed), Unexplained fever, deaths or clusters ("mystery fever", "unknown disease"…) |
+| Water- and food-borne | Acute Diarrhoeal Disease (incl. acute gastroenteritis), Food poisoning, Dysentery, Cholera, Shigellosis, Non-typhoidal salmonellosis, Enteric fever (Typhoid), Acute Viral Hepatitis, Hepatitis A, Hepatitis E |
+| Vector-borne | Malaria, Dengue, Chikungunya, Kala-azar, Acute Encephalitis Syndrome (incl. "brain fever", Chandipura), Japanese Encephalitis, West Nile Virus, Zika Virus Disease, Yellow Fever |
+| Respiratory | Influenza-like illness (ILI), Severe acute respiratory infection (SARI), Influenza (H1N1, H3N2, swine flu), COVID-19, MERS-CoV |
+| Vaccine-preventable | Measles, Rubella, Diphtheria, Pertussis, Polio, Mumps, Chickenpox, Meningitis |
+| Zoonotic | Human Rabies, Leptospirosis ("rat fever"), Scrub Typhus, Kyasanur Forest Disease ("monkey fever"), Nipah Virus Disease, Brucellosis, Anthrax, Plague, CCHF, Mpox |
+| Imported and haemorrhagic fevers | Ebola Virus Disease, Marburg Virus Disease |
+| Syndromes (S form) | Fever (no diagnosis), Fever with rash, Fever with bleeding, Fever with altered sensorium, Jaundice (< 4 weeks), Acute Flaccid Paralysis, Animal bite, Snake bite, Other unusual syndrome or health condition |
+
+Two entries are not on the IDSP forms: **Food poisoning**, the most frequent term in IDSP's own weekly outbreak reports, and **COVID-19**, kept on purpose. **Bird flu in animals** is recognised but not monitored: it is animal health, not an IDSP condition, and "avian influenza" is never counted as human influenza.
 
 Words like "outbreak", "surge in cases", "cluster", "suspected cases" or "deaths" are not used to collect articles. They only help decide whether an article that already names a disease is reporting an outbreak.
 
-A disease is only recorded when the text actually names it, and the same rule applies to news articles and official reports:
-- jaundice or "viral hepatitis" alone is not taken to mean hepatitis A or E. A jaundice outbreak without a named cause goes to its own group, *Jaundice (cause not confirmed)*, which is dropped as soon as hepatitis A or E is named;
-- dysentery is not counted as acute diarrhoeal disease in general;
-- a suspected "brain fever" is AES, not Japanese Encephalitis;
-- bird flu ("avian influenza") is not also counted as seasonal influenza. Where keywords overlap, the more specific one wins.
+A condition is only recorded when the text actually names it, and the same rule applies to news articles and official reports:
+- jaundice alone is not taken to mean hepatitis A or E. A jaundice outbreak without a named cause is the S-form syndrome *Jaundice (< 4 weeks)*; hepatitis without its type is *Acute Viral Hepatitis*. Both are dropped as soon as hepatitis A or E is named;
+- the syndromes are dropped when a diagnosis is named ("mystery fever… dengue confirmed" is dengue), and an animal bite is dropped when human rabies is named;
+- a suspected "brain fever" is Acute Encephalitis Syndrome, not Japanese Encephalitis; where keywords overlap, the more specific one wins.
 
 A few keywords are also narrowed to avoid false matches. Plain "plague" mostly appears as a figure of speech, so only "bubonic plague", "plague cases" and similar are used.
 
@@ -159,7 +162,7 @@ Reading these PDFs reliably took some care:
 - if state, district and disease have shifted by one column, they are put back using the place names;
 - diseases are taken only from the disease column, never from the comments, which often mention diseases that were ruled out.
 
-The report's own disease name is always kept as printed. It is linked to a monitored disease only through the explicit table in `config/official_diseases.yaml` (for example "Acute Gastroenteritis" → Acute Diarrhoeal Disease, "Chandipura Virus" → Japanese Encephalitis / AES). Terms that don't clearly identify a monitored disease are not mapped to one: "Jaundice" goes to *Jaundice (cause not confirmed)* rather than hepatitis A/E, "Acute Hepatitis" is kept as reported, dysentery and shigellosis are not treated as acute diarrhoeal disease in general, and fever with rash stays as reported. A plain "Fever" outbreak (no diagnosis) is counted as an unexplained fever cluster, the same as a "fever outbreak" in the news. Chickenpox, mumps and other diseases outside the list are kept under their own names. This is the same standard used for news articles.
+The report's own disease name is always kept as printed. It is linked to an IDSP condition only through the explicit table in `config/official_diseases.yaml` (for example "Acute Gastroenteritis" → Acute Diarrhoeal Disease, "Chandipura Virus" → Acute Encephalitis Syndrome, "Hepatitis A & E" → Hepatitis A and Hepatitis E). Terms are never stretched: "Jaundice" is the jaundice syndrome rather than hepatitis A/E, "Acute Hepatitis" is Acute Viral Hepatitis, a plain "Fever" outbreak is the fever syndrome, and conditions that IDSP reports outside its list (Guillain-Barré syndrome, hand, foot and mouth disease) go to *Other unusual syndrome or health condition*. This is the same standard used for news articles.
 
 Values are kept as printed, including a few obvious errors in the source PDFs. Where a value is cut off by a page break, the field is left empty rather than guessed. On a check of six weekly reports (245 outbreaks), 244 records were complete and 243 were located to the right district.
 
@@ -294,12 +297,12 @@ To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and 
 
 | File | What it controls |
 |---|---|
-| `config/diseases.yaml` | diseases, their group, keywords, names in the 12 Indian languages and search terms; screening words per language; lookback period (45 days) and refresh interval (30 minutes) |
+| `config/diseases.yaml` | the IDSP conditions with their code, group, keywords, names in the 12 Indian languages and search terms; screening words per language; lookback period (45 days) and refresh interval (30 minutes) |
 | `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
 | `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
 | `config/sources.yaml` | English news sites and how to read them, plus the official report series |
 | `config/regional_sources.yaml` | Indian-language news sites, with their language |
-| `config/official_diseases.yaml` | which IDSP disease terms map to which monitored disease |
+| `config/official_diseases.yaml` | which terms of the IDSP weekly outbreak reports map to which condition |
 
 Changes take effect on the next run. Stored articles are re-classified automatically.
 

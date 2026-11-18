@@ -1,68 +1,94 @@
-# How disease names in the official IDSP weekly reports map to the monitored diseases (diseases.yaml).
+# How disease names in the official IDSP weekly outbreak reports map to the monitored conditions
+# (diseases.yaml, the IDSP list).
 #
-# The report's own wording is always stored as printed (disease_raw). A record is linked to a monitored
-# disease only when its term is listed here. Terms are compared in lower case, ignoring "Suspected" and
-# anything in brackets ("Malaria (P. falciparum)" -> "malaria"). A combined entry such as
-# "Scrub Typhus & Dengue" is split on "&", "and" and "," and each part is looked up.
+# The report's own wording is always stored as printed (disease_raw). A record is linked to a condition only
+# when its term is listed here. Terms are compared in lower case, ignoring "Suspected" and anything in
+# brackets ("Malaria (P. falciparum)" -> "malaria"). A combined entry such as "Scrub Typhus & Dengue" is
+# split on "&", "and" and "," and each part is looked up.
 #
-# Deliberately NOT mapped (kept under the report's own term), because the term alone does not identify
-# a monitored disease:
-#   acute hepatitis                -> not necessarily hepatitis A or E
-#   dysentery, shigellosis         -> a specific form of diarrhoeal disease, not ADD in general
-#   fever with rash                -> a syndrome, not an unexplained fever cluster
-#   chickenpox, mumps, hand foot and mouth disease, GBS, West Nile fever, meningococcal meningitis
-#     -> not monitored diseases
-#
-# The same standard applies to news articles (diseases.yaml): the source never changes how a disease
-# is identified.
+# The same standard applies to news articles: the term must identify the condition. Jaundice without a named
+# cause is the jaundice syndrome (S form), not hepatitis A or E; hepatitis without its type is acute viral
+# hepatitis. Bird flu in animals is not an IDSP condition and is not mapped.
 
 map:
   acute diarrhoeal disease: Acute Diarrhoeal Disease
   acute diarrheal disease: Acute Diarrhoeal Disease
   acute gastroenteritis: Acute Diarrhoeal Disease
   gastroenteritis: Acute Diarrhoeal Disease
-  food poisoning: Acute Diarrhoeal Disease      # the monitored group includes food-poisoning outbreaks
+  food poisoning: Food poisoning
+  dysentery: Dysentery
+  dysentry: Dysentery                            # spelling used in the reports
   cholera: Cholera
-  typhoid: Typhoid
-  enteric fever: Typhoid
-  hepatitis a: Hepatitis A / E
-  hepatitis e: Hepatitis A / E
-  hepatitis a & e: Hepatitis A / E
-  jaundice: Jaundice (cause not confirmed)       # not assumed to be hepatitis A or E
-  dengue: Dengue
+  shigellosis: Shigellosis
+  non typhoidal salmonellosis: Non-typhoidal salmonellosis
+  typhoid: Enteric fever (Typhoid)
+  enteric fever: Enteric fever (Typhoid)
+  acute hepatitis: Acute Viral Hepatitis
+  viral hepatitis: Acute Viral Hepatitis
+  acute viral hepatitis: Acute Viral Hepatitis
+  hepatitis a: Hepatitis A
+  hepatitis e: Hepatitis E
+  hepatitis a & e: [Hepatitis A, Hepatitis E]
+  jaundice: Jaundice (< 4 weeks)
   malaria: Malaria
+  dengue: Dengue
   chikungunya: Chikungunya
-  japanese encephalitis: Japanese Encephalitis / AES
-  acute encephalitis syndrome: Japanese Encephalitis / AES
-  acute encephalitic syndrome: Japanese Encephalitis / AES
-  aes: Japanese Encephalitis / AES
-  chandipura virus: Japanese Encephalitis / AES
-  chandipura: Japanese Encephalitis / AES
-  nipah: Nipah
-  nipah virus: Nipah
+  kala-azar: Kala-azar
+  kala azar: Kala-azar
+  acute encephalitis syndrome: Acute Encephalitis Syndrome
+  acute encephalitic syndrome: Acute Encephalitis Syndrome
+  aes: Acute Encephalitis Syndrome
+  chandipura virus: Acute Encephalitis Syndrome
+  chandipura: Acute Encephalitis Syndrome
+  japanese encephalitis: Japanese Encephalitis
+  west nile fever: West Nile Virus
+  west nile virus: West Nile Virus
+  zika: Zika Virus Disease
+  zika virus disease: Zika Virus Disease
+  influenza: Influenza
+  h1n1: Influenza
+  h3n2: Influenza
+  swine flu: Influenza
+  ili: Influenza-like illness (ILI)
+  influenza like illness: Influenza-like illness (ILI)
+  sari: Severe acute respiratory infection (SARI)
+  covid-19: COVID-19
+  measles: Measles
+  rubella: Rubella
+  diphtheria: Diphtheria
+  pertussis: Pertussis
+  mumps: Mumps
+  chickenpox: Chickenpox
+  chicken pox: Chickenpox
+  meningitis: Meningitis
+  meningococcal meningitis: Meningitis
+  human rabies: Human Rabies
+  rabies: Human Rabies
   leptospirosis: Leptospirosis
   scrub typhus: Scrub Typhus
   kyasanur forest disease: Kyasanur Forest Disease (KFD)
   kfd: Kyasanur Forest Disease (KFD)
-  rabies: Rabies
-  human rabies: Rabies
-  avian influenza: Other zoonotic outbreaks
-  bird flu: Other zoonotic outbreaks
-  anthrax: Other zoonotic outbreaks
-  brucellosis: Other zoonotic outbreaks
-  plague: Other zoonotic outbreaks
-  crimean-congo haemorrhagic fever: Other zoonotic outbreaks
-  crimean-congo hemorrhagic fever: Other zoonotic outbreaks
-  cchf: Other zoonotic outbreaks
-  mpox: Other zoonotic outbreaks
-  influenza: Influenza (H1N1 / H3N2)
-  h1n1: Influenza (H1N1 / H3N2)
-  h3n2: Influenza (H1N1 / H3N2)
-  swine flu: Influenza (H1N1 / H3N2)
-  covid-19: COVID-19
-  measles: Measles
-  rubella: Measles                               # the monitored group is "Measles (incl. rubella)"
-  diphtheria: Diphtheria
-  # A fever outbreak with no diagnosis is an unexplained fever cluster, as "fever outbreak" is in news.
-  fever: Unexplained fever / deaths / clusters
-  only fever < 7 days: Unexplained fever / deaths / clusters
+  nipah: Nipah Virus Disease
+  nipah virus: Nipah Virus Disease
+  brucellosis: Brucellosis
+  anthrax: Anthrax
+  plague: Plague
+  crimean-congo haemorrhagic fever: Crimean-Congo Haemorrhagic Fever (CCHF)
+  crimean-congo hemorrhagic fever: Crimean-Congo Haemorrhagic Fever (CCHF)
+  cchf: Crimean-Congo Haemorrhagic Fever (CCHF)
+  mpox: Mpox
+  monkeypox: Mpox
+  # Syndromes (S form). A fever outbreak with no diagnosis is the fever syndrome, as "fever outbreak" is in news.
+  fever: Fever (no diagnosis)
+  only fever < 7 days: Fever (no diagnosis)
+  only fever >= 7 days: Fever (no diagnosis)
+  fever with rash: Fever with rash
+  fever with bleeding: Fever with bleeding
+  animal bite: Animal bite
+  dog bite: Animal bite
+  snake bite: Snake bite
+  # Reported by IDSP outside the list: "other unusual state specific health condition"
+  guillain barre syndrome: Other unusual syndrome or health condition
+  gbs: Other unusual syndrome or health condition
+  hand foot and mouth disease: Other unusual syndrome or health condition
+  amoebic encephalitis: Other unusual syndrome or health condition

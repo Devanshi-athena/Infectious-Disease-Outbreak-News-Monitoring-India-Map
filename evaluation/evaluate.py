@@ -38,7 +38,7 @@ def main() -> dict:
             Article.article_url.in_([row["article_url"] for row in labels])))}
     locator = DistrictLocator()
 
-    configured = [d.name for d in load_disease_config().diseases]
+    configured = [d.name for d in load_disease_config().monitored]
 
     def canonical(state: str | None, district: str | None) -> tuple[str | None, str | None]:
         """Reference-data names, so "Ahmedabad"/"Ahmadabad" or "SAS Nagar (Mohali)" compare equal."""
@@ -46,11 +46,10 @@ def main() -> dict:
         return place["state"] if place["location_level"] else (state or None), place["district"]
 
     def disease_name(label: str) -> str:
-        """A labelled disease as its configured name: "Influenza" -> "Influenza (H1N1 / H3N2)", and
-        "AES / unspecified encephalitis" -> "Japanese Encephalitis / AES" (a shared name of the group)."""
-        parts = {p.strip().lower() for p in label.split("/")}
-        return next((c for c in configured if c.startswith(label) or label.startswith(c)
-                     or parts & {p.strip().lower() for p in c.split("/")}), label)
+        """Labels use the configured (IDSP list) names; an unknown name is an error in the labels."""
+        if label not in configured:
+            raise ValueError(f"labels.csv names a disease that is not in diseases.yaml: {label!r}")
+        return label
 
     tp = fp = fn = tn = 0
     status_ok = disease_exact = disease_overlap = both = 0

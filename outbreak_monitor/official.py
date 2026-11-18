@@ -300,11 +300,13 @@ class DiseaseMap:
     Terms not in the table stay unmapped (the record keeps the report's own wording)."""
 
     def __init__(self, path=CONFIG_DIR / "official_diseases.yaml"):
-        diseases = load_disease_config().diseases
+        diseases = load_disease_config().monitored
         known = {d.name for d in diseases}
         self.superseded_by = {d.name: set(d.superseded_by) for d in diseases if d.superseded_by}
-        self.terms = {self.key(term): disease for term, disease in (_read_yaml(path).get("map") or {}).items()}
-        if unknown := set(self.terms.values()) - known:
+        # A term maps to one condition, or to a list ("hepatitis a & e": [Hepatitis A, Hepatitis E]).
+        self.terms = {self.key(term): [target] if isinstance(target, str) else list(target)
+                      for term, target in (_read_yaml(path).get("map") or {}).items()}
+        if unknown := {d for targets in self.terms.values() for d in targets} - known:
             raise ValueError(f"{path.name} maps to diseases not in diseases.yaml: {sorted(unknown)}")
 
     @staticmethod
@@ -319,7 +321,7 @@ class DiseaseMap:
             return []
         whole = self.key(raw)
         parts = [whole] if whole in self.terms else [self.key(p) for p in re.split(r"&|,|\band\b", raw, flags=re.I)]
-        found = list(dict.fromkeys(self.terms[p] for p in parts if p in self.terms))
+        found = list(dict.fromkeys(d for p in parts if p in self.terms for d in self.terms[p]))
         return [d for d in found if not self.superseded_by.get(d, set()) & set(found)]
 
 

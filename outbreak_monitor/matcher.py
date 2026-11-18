@@ -38,8 +38,10 @@ class KeywordMatcher:
 
     def __init__(self, diseases: list[Disease]):
         # English keywords and native-language names (config.native_pattern) are matched alike.
-        # English keywords and native-language names (config.native_pattern) are matched alike.
-        self.order = [d.name for d in diseases if d.keywords or d.native_keywords]   # configuration order
+        # Phrases of diseases that are not monitored are matched too (so they take precedence over shorter
+        # keywords inside them) but never reported.
+        self.order = [d.name for d in diseases if d.monitored and (d.keywords or d.native_keywords)]
+        self.ignored = {d.name for d in diseases if not d.monitored}
         self.superseded_by = {d.name: set(d.superseded_by) for d in diseases if d.superseded_by}
         entries = sorted(((kw, d.name) for d in diseases for kw in d.keywords + d.native_patterns),
                          key=lambda e: -len(e[0]))
@@ -54,7 +56,8 @@ class KeywordMatcher:
         found = []
         for m in self.pattern.finditer(normalise_text(text)):
             keyword, disease = self._entries[int(m.lastgroup[1:])]
-            found.append((disease, keyword))
+            if disease not in self.ignored:
+                found.append((disease, keyword))
         return found
 
     def resolve(self, names: list[str]) -> list[str]:

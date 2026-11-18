@@ -141,7 +141,7 @@ def test_app_runs_without_errors(factory, monkeypatch):
     state_filter.set_value(["Kerala"]).run()
     assert not at.exception and kpi_values(at)[0] == "1"
     at.sidebar.multiselect[2].set_value([])
-    at.sidebar.multiselect[0].set_value(["Respiratory and vaccine-preventable"]).run()   # Measles is in this group
+    at.sidebar.multiselect[0].set_value(["Vaccine-preventable"]).run()   # Measles is in this group
     assert not at.exception and kpi_values(at)[0] == "1"
     at.sidebar.multiselect[0].set_value([])
     at.sidebar.radio[0].set_value("all").run()

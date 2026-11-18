@@ -6,19 +6,19 @@ Labelled articles: 120 (missing from the database: 0)
 
 | | Labelled relevant | Labelled irrelevant |
 |---|---|---|
-| **System relevant** | 62 (true positives) | 3 (false positives) |
-| **System irrelevant** | 3 (false negatives) | 52 (true negatives) |
+| **System relevant** | 61 (true positives) | 3 (false positives) |
+| **System irrelevant** | 1 (false negatives) | 55 (true negatives) |
 
-- Precision: 95% · Recall: 95% · F1: 0.95
+- Precision: 95% · Recall: 98% · F1: 0.97
 
-## On the 62 articles both call relevant
+## On the 61 articles both call relevant
 
-- Event status matches: 59/62 = 95%
-- Diseases exactly the same: 52/62 = 84%; at least one disease shared: 62/62 = 100%
-- Inside / outside India correct: 62/62 = 100%
-- State/UT correct (located in India by the labels): 56/58 = 97%
-- District level correct (district, or state level when the label has no district): 48/58 = 83%
-- Flagged for location review: 5/58
+- Event status matches: 58/61 = 95%
+- Diseases exactly the same: 50/61 = 82%; at least one disease shared: 60/61 = 98%
+- Inside / outside India correct: 61/61 = 100%
+- State/UT correct (located in India by the labels): 54/57 = 95%
+- District level correct (district, or state level when the label has no district): 45/57 = 79%
+- Flagged for location review: 3/57
 
 ## Disagreements
 
@@ -26,11 +26,12 @@ Labelled articles: 120 (missing from the database: 0)
 |---|---|---|---|
 | location | 84 BSF personnel hospitalised in Imphal after ‘food poisoning’ | Manipur / Imphal West | Manipur / Imphal East |
 | location | Suspected rubella case in Simdega puts health dept on alert; MR vaccination drive intensif | Jharkhand / (state level) | Jharkhand / Simdega |
-| relevance | Vandalur zoo to reopen tomorrow after bird flu scare | relevant | irrelevant (other) |
+| location | Norovirus On Prowl; Hosps, OPDs Start Getting Cases | West Bengal / Kolkata | Gujarat / Surat |
 | location | City logs 7 new dengue cases | Uttar Pradesh / Prayagraj | Delhi / (state level) [flagged] |
 | relevance | El Niño may increase dengue risk in Kerala, IITM study finds; climate model predicts 16-20 | irrelevant | relevant (outbreak_report) |
-| relevance | 138 fall ill after consuming prasad at religious ceremony in Majuli | relevant | irrelevant (other) |
+| disease | ‘Rabid’ dog bites 16 in Latehar, victims given anti-rabies shots | Animal bite | Human Rabies |
 | location | Minister Arunraj reviews civic works, dengue preparedness in two zones | Tamil Nadu / Chennai | Tamil Nadu / Tenkasi |
+| location | Cow dies after 'dog bite', sparks rabies scare as 450 consume milk-based prasad in UP | Uttar Pradesh / Gorakhpur | Uttar Pradesh / Kheri |
 | location | H1N1 cases rise in Haryana, but statewide spread remains unclear | Haryana / Hisar | Haryana / (state level) |
 | relevance | Meet Isabel Garcia, the 18-year-old North Carolina student who found 3 coral bacteria that | irrelevant | relevant (outbreak_report) |
 | location | VJTI students protest over hostel conditions after student’s death, demand rectors’ resign | Maharashtra / Mumbai | Maharashtra / (state level) [flagged] |

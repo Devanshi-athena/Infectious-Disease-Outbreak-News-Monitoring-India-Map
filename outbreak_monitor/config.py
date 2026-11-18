@@ -62,14 +62,21 @@ def native_pattern(word: str) -> str:
 class Disease:
     name: str
     keywords: list[str]
-    search_terms: list[str] = field(default_factory=list)
+    search_terms: list[str] | None = None   # None: the first keyword; []: no topic-page search
     category: str = "Other"   # disease group, e.g. "Vector-borne"
     superseded_by: list[str] = field(default_factory=list)  # dropped when one of these is also found
     native_keywords: dict[str, list[str]] = field(default_factory=dict)  # language code -> names in that language
+    code: str = ""            # stable identifier, e.g. "DENGUE" (names may be reworded, codes never change)
+    idsp: str = ""            # where the condition is on the IDSP list, e.g. "P, L" or "S 2.9"
+    # False: the phrases are recognised (so "influenza" inside "avian influenza" is not human flu) but never
+    # tag an article, are not searched for and are not shown.
+    monitored: bool = True
 
     def __post_init__(self):
-        if not self.search_terms and self.keywords:
-            self.search_terms = [self.keywords[0]]
+        if not self.monitored:
+            self.search_terms = []
+        elif self.search_terms is None:
+            self.search_terms = self.keywords[:1]
         if unknown := set(self.native_keywords) - set(LANGUAGES):
             raise ValueError(f"disease {self.name!r}: unknown language(s) {sorted(unknown)}")
 
@@ -97,6 +104,11 @@ class DiseaseConfig:
     screening_words: dict[str, list[str]] = field(default_factory=dict)
 
     @property
+    def monitored(self) -> list[Disease]:
+        """The diseases that tag articles and are shown (the IDSP list), in configuration order."""
+        return [d for d in self.diseases if d.monitored]
+
+    @property
     def screening_patterns(self) -> dict[str, list[str]]:
         """Language code -> screening words as matcher phrases."""
         return {lang: [native_pattern(w) for w in words] for lang, words in self.screening_words.items()}
@@ -121,11 +133,18 @@ def load_disease_config(path: Path = CONFIG_DIR / "diseases.yaml") -> DiseaseCon
     data = _read_yaml(path)
     diseases = [
         Disease(name=d["name"], keywords=list(d.get("keywords") or []),
-                search_terms=list(d.get("search_terms") or []), category=d.get("category") or "Other",
+                search_terms=list(d["search_terms"] or []) if "search_terms" in d else None,
+                category=d.get("category") or "Other",
                 superseded_by=list(d.get("superseded_by") or []),
-                native_keywords={lang: list(words or []) for lang, words in (d.get("native_keywords") or {}).items()})
+                native_keywords={lang: list(words or []) for lang, words in (d.get("native_keywords") or {}).items()},
+                code=str(d.get("code") or ""), idsp=str(d.get("idsp") or ""), monitored=d.get("monitored", True))
         for d in data.get("diseases") or []
     ]
+    names, codes = [d.name for d in diseases], [d.code for d in diseases if d.code]
+    if len(set(names)) != len(names) or len(set(codes)) != len(codes):
+        raise ValueError("diseases.yaml: disease names and codes must be unique")
+    if unknown := {s for d in diseases for s in d.superseded_by} - set(names):
+        raise ValueError(f"diseases.yaml: superseded_by names unknown diseases {sorted(unknown)}")
     screening = {lang: list(words or []) for lang, words in (data.get("screening_words") or {}).items()}
     if unknown := set(screening) - set(LANGUAGES):
         raise ValueError(f"screening_words: unknown language(s) {sorted(unknown)}")

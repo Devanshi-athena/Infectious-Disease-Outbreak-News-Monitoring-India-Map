@@ -139,17 +139,24 @@ def test_disease_inference_is_strict():
     m = KeywordMatcher(load_disease_config().diseases)
     assert m.match("Newborn jaundice: when to see a doctor") == []
     assert m.match("Town plagued by potholes") == []
-    # Jaundice alone is not hepatitis A/E; it has its own group until a cause is named
-    assert m.match("3 jaundice deaths in Nainital") == ["Jaundice (cause not confirmed)"]
-    assert m.match("Jaundice cases rise; hepatitis A confirmed in samples") == ["Hepatitis A / E"]
+    # Jaundice alone is not hepatitis A/E: it is the jaundice syndrome (S form) until a cause is named
+    assert m.match("3 jaundice deaths in Nainital") == ["Jaundice (< 4 weeks)"]
+    assert m.match("Jaundice cases rise; hepatitis A confirmed in samples") == ["Hepatitis A"]
     assert m.match("Newborn jaundice: when to see a doctor") == []
-    assert m.match("Hepatitis A outbreak in hostel") == ["Hepatitis A / E"]
-    assert m.match("Dysentery cases rise in slum") == []              # not acute diarrhoeal disease in general
+    assert m.match("Hepatitis A outbreak in hostel") == ["Hepatitis A"]
+    assert m.match("Viral hepatitis cases rise; hepatitis E found in samples") == ["Hepatitis E"]
+    assert m.match("Dysentery cases rise in slum") == ["Dysentery"]   # its own condition, not ADD in general
     # Overlapping keywords: the more specific one wins
-    assert m.match("Avian influenza confirmed in water birds") == ["Other zoonotic outbreaks"]
-    assert m.match("Bird flu outbreak triggers alert") == ["Other zoonotic outbreaks"]
-    assert m.match("Seasonal influenza and bird flu cases rise") == ["Other zoonotic outbreaks", "Influenza (H1N1 / H3N2)"]
-    assert m.match("Bubonic plague case confirmed") == ["Other zoonotic outbreaks"]
+    assert m.match("Japanese encephalitis cases in Gorakhpur") == ["Japanese Encephalitis"]   # not also AES
+    assert m.match("Measles-rubella cases reported") == ["Measles", "Rubella"]
+    assert m.match("Bubonic plague case confirmed") == ["Plague"]
+    assert m.match("Stray dog bites 12; one dies of rabies") == ["Human Rabies"]           # bite superseded
+    assert m.match("Dog bite cases rise in the city") == ["Animal bite"]
+    assert m.match("Mystery fever kills 3; dengue confirmed") == ["Dengue"]                # syndrome superseded
+    # Bird flu in animals is recognised but not monitored, and is not human influenza
+    assert m.match("Avian influenza confirmed in water birds") == []
+    assert m.match("Bird flu outbreak triggers alert") == []
+    assert m.match("Seasonal influenza and bird flu cases rise") == ["Influenza"]
 
 
 def test_comparison_and_past_events_are_not_outbreak_reports():
