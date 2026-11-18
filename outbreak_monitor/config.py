@@ -6,12 +6,20 @@ from pathlib import Path
 import yaml
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+SOURCE_FILES = (CONFIG_DIR / "sources.yaml", CONFIG_DIR / "regional_sources.yaml")
+
+# Languages of the news sources (ISO 639-1 code -> name). Every language except English is translated.
+LANGUAGES = {"en": "English", "hi": "Hindi", "bn": "Bengali", "mr": "Marathi", "te": "Telugu", "ta": "Tamil",
+             "gu": "Gujarati", "ur": "Urdu", "kn": "Kannada", "or": "Odia", "ml": "Malayalam", "pa": "Punjabi",
+             "as": "Assamese"}
+SHORT_NATIVE_KEYWORD = 3   # native keywords of up to 3 characters must be whole words (no suffixes)
 
 
 @dataclass
 class Source:
     name: str
     domain: str                                              # e.g. www.thehindu.com
+    language: str = "en"                                     # ISO 639-1 code (config.LANGUAGES)
     enabled: bool = True
     rss: list[str] = field(default_factory=list)             # RSS/Atom feed URLs
     sitemaps: list[str] = field(default_factory=list)        # news sitemaps (latest ~48 h), read every run
@@ -19,6 +27,10 @@ class Source:
     archive_child_pattern: str | None = None                 # regex selecting which index children to read
     keyword_pages: list[str] = field(default_factory=list)   # URL templates with {slug}/{query}/{page}
     article_pattern: str | None = None                       # regex on URL path identifying article links
+
+    def __post_init__(self):
+        if self.language not in LANGUAGES:
+            raise ValueError(f"source {self.name!r}: unknown language {self.language!r}")
 
     def owns(self, host: str) -> bool:
         """True if a link's host belongs to this source (with or without 'www.')."""
@@ -36,6 +48,16 @@ class OfficialSource:
     enabled: bool = True
 
 
+def native_pattern(word: str) -> str:
+    """A native-language keyword as a matcher phrase: Indian languages attach case endings and postpositions
+    to the word ("डेंगू" -> "डेंगूने", "டெங்கு" -> "டெங்குவால்"), so endings are allowed (trailing *), except for
+    short words and words written with a trailing "=", which would otherwise match the start of unrelated
+    words (Bengali "হাম" in "হামলা", "নিপা=" not in "নিপাত")."""
+    exact = word.strip().endswith("=")
+    word = " ".join(word.strip().rstrip("=").split())
+    return word if exact or len(word.replace(" ", "")) <= SHORT_NATIVE_KEYWORD else word + "*"
+
+
 @dataclass
 class Disease:
     name: str
@@ -43,10 +65,18 @@ class Disease:
     search_terms: list[str] = field(default_factory=list)
     category: str = "Other"   # disease group, e.g. "Vector-borne"
     superseded_by: list[str] = field(default_factory=list)  # dropped when one of these is also found
+    native_keywords: dict[str, list[str]] = field(default_factory=dict)  # language code -> names in that language
 
     def __post_init__(self):
         if not self.search_terms and self.keywords:
             self.search_terms = [self.keywords[0]]
+        if unknown := set(self.native_keywords) - set(LANGUAGES):
+            raise ValueError(f"disease {self.name!r}: unknown language(s) {sorted(unknown)}")
+
+    @property
+    def native_patterns(self) -> list[str]:
+        """Native-language keywords of every language, as matcher phrases."""
+        return [native_pattern(w) for words in self.native_keywords.values() for w in words]
 
 
 @dataclass
@@ -61,6 +91,15 @@ class Settings:
 class DiseaseConfig:
     diseases: list[Disease] = field(default_factory=list)
     settings: Settings = field(default_factory=Settings)
+    # Native-language words that make a regional article worth translating although they name no single
+    # disease ("fever", "epidemic", "jaundice"). They never tag a disease themselves, and apply only to
+    # sources in their own language (Marathi "साथ" is an epidemic, Hindi "साथ" means "with").
+    screening_words: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def screening_patterns(self) -> dict[str, list[str]]:
+        """Language code -> screening words as matcher phrases."""
+        return {lang: [native_pattern(w) for w in words] for lang, words in self.screening_words.items()}
 
 
 def _read_yaml(path: Path) -> dict:
@@ -68,9 +107,10 @@ def _read_yaml(path: Path) -> dict:
         return yaml.safe_load(f) or {}
 
 
-def load_sources(path: Path = CONFIG_DIR / "sources.yaml") -> list[Source]:
-    """Return all sources in the file, including disabled ones."""
-    return [Source(**s) for s in _read_yaml(path).get("sources") or []]
+def load_sources(paths=SOURCE_FILES) -> list[Source]:
+    """Return all sources in the files (English and regional-language), including disabled ones."""
+    paths = [paths] if isinstance(paths, (str, Path)) else paths
+    return [Source(**s) for path in paths if Path(path).exists() for s in _read_yaml(path).get("sources") or []]
 
 
 def load_official_sources(path: Path = CONFIG_DIR / "sources.yaml") -> list[OfficialSource]:
@@ -82,7 +122,12 @@ def load_disease_config(path: Path = CONFIG_DIR / "diseases.yaml") -> DiseaseCon
     diseases = [
         Disease(name=d["name"], keywords=list(d.get("keywords") or []),
                 search_terms=list(d.get("search_terms") or []), category=d.get("category") or "Other",
-                superseded_by=list(d.get("superseded_by") or []))
+                superseded_by=list(d.get("superseded_by") or []),
+                native_keywords={lang: list(words or []) for lang, words in (d.get("native_keywords") or {}).items()})
         for d in data.get("diseases") or []
     ]
-    return DiseaseConfig(diseases=diseases, settings=Settings(**(data.get("settings") or {})))
+    screening = {lang: list(words or []) for lang, words in (data.get("screening_words") or {}).items()}
+    if unknown := set(screening) - set(LANGUAGES):
+        raise ValueError(f"screening_words: unknown language(s) {sorted(unknown)}")
+    return DiseaseConfig(diseases=diseases, settings=Settings(**(data.get("settings") or {})),
+                         screening_words=screening)

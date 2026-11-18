@@ -168,6 +168,130 @@ sources:
       - https://health.economictimes.indiatimes.com/tag/{slug}/{page}
     article_pattern: '^/news/[^/]+/[^/]+/\d+$'
 
+  # ---------------------------------------------------------------- English regional papers
+  # Added for states the national papers cover thinly: the South (New Indian Express, Deccan Herald,
+  # Telangana Today), Punjab / Haryana / Himachal / J&K (The Tribune), Odisha (OdishaTV) and the North-East.
+  # Not added: Arunachal Times and Imphal Free Press (no feed or sitemap), The Hills Times (not updated).
+
+  - name: The New Indian Express
+    enabled: true
+    domain: www.newindianexpress.com
+    rss:
+      - https://www.newindianexpress.com/feed
+    sitemaps:
+      - https://www.newindianexpress.com/news_sitemap.xml
+    archive_sitemaps:   # one sitemap per day
+      - https://www.newindianexpress.com/sitemap.xml
+    archive_child_pattern: '/sitemap-daily-\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Deccan Herald
+    enabled: true
+    domain: www.deccanherald.com
+    rss:
+      - https://www.deccanherald.com/feed
+    sitemaps:
+      - https://www.deccanherald.com/news_sitemap.xml
+    archive_sitemaps:   # one sitemap per day
+      - https://www.deccanherald.com/sitemap.xml
+    archive_child_pattern: '/sitemap-daily-\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: The Tribune
+    enabled: true
+    domain: www.tribuneindia.com
+    # RSS refuses automated access (403) and there is no news sitemap; these category sitemaps list each
+    # section's latest 100 articles (URLs only, matched on the URL words).
+    sitemaps:
+      - https://www.tribuneindia.com/sitemap/category/1024/sitemap.xml   # Punjab
+      - https://www.tribuneindia.com/sitemap/category/91/sitemap.xml     # Punjab
+      - https://www.tribuneindia.com/sitemap/category/129/sitemap.xml    # Punjab
+      - https://www.tribuneindia.com/sitemap/category/151/sitemap.xml    # Bathinda
+      - https://www.tribuneindia.com/sitemap/category/205/sitemap.xml    # Amritsar
+      - https://www.tribuneindia.com/sitemap/category/222/sitemap.xml    # Ludhiana
+      - https://www.tribuneindia.com/sitemap/category/272/sitemap.xml    # Jalandhar
+      - https://www.tribuneindia.com/sitemap/category/223/sitemap.xml    # Haryana
+      - https://www.tribuneindia.com/sitemap/category/48/sitemap.xml     # Himachal
+      - https://www.tribuneindia.com/sitemap/category/101/sitemap.xml    # Chandigarh
+      - https://www.tribuneindia.com/sitemap/category/285/sitemap.xml    # J&K
+      - https://www.tribuneindia.com/sitemap/category/365/sitemap.xml    # J&K
+      - https://www.tribuneindia.com/sitemap/category/329/sitemap.xml    # Chhattisgarh
+      - https://www.tribuneindia.com/sitemap/category/347/sitemap.xml    # Health
+
+  - name: Telangana Today
+    enabled: true
+    domain: telanganatoday.com
+    rss:   # ~500 items, about 2 days
+      - https://telanganatoday.com/feed
+    sitemaps:
+      - https://telanganatoday.com/news-sitemap.xml
+
+  - name: OdishaTV
+    enabled: true
+    domain: odishatv.in
+    rss:
+      - https://odishatv.in/feed
+    sitemaps:
+      - https://odishatv.in/news-sitemap.xml
+    archive_sitemaps:   # one sitemap per day
+      - https://odishatv.in/webcontent-sitemap.xml
+    archive_child_pattern: '/sitemap_\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: The Sentinel
+    enabled: true
+    domain: www.sentinelassam.com
+    rss:
+      - https://www.sentinelassam.com/feed
+    sitemaps:
+      - https://www.sentinelassam.com/news_sitemap.xml
+    archive_sitemaps:   # one sitemap per day
+      - https://www.sentinelassam.com/sitemap.xml
+    archive_child_pattern: '/sitemap-daily-\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Northeast Now
+    enabled: true
+    domain: nenow.in
+    rss:
+      - https://nenow.in/feed
+    archive_sitemaps:   # WordPress post sitemaps; only those updated within the lookback are read
+      - https://nenow.in/sitemap_index.xml
+    archive_child_pattern: '/post-sitemap\d*\.xml$'
+
+  - name: EastMojo
+    enabled: true
+    domain: eastmojo.com
+    rss:
+      - https://www.eastmojo.com/feed
+    archive_sitemaps:   # WordPress post sitemaps; only those updated within the lookback are read
+      - https://eastmojo.com/sitemap_index.xml
+    archive_child_pattern: '/post-sitemap\d*\.xml$'
+
+  - name: The Shillong Times
+    enabled: true
+    domain: theshillongtimes.com
+    rss:   # 10 items; covered by regular runs
+      - https://theshillongtimes.com/feed
+
+  - name: Nagaland Post
+    enabled: true
+    domain: nagalandpost.com
+    rss:   # ~500 items, about 5 days
+      - https://nagalandpost.com/feed
+
+  - name: Eastern Mirror
+    enabled: true
+    domain: www.easternmirrornagaland.com
+    sitemaps:
+      - https://www.easternmirrornagaland.com/news-sitemap.xml
+
+  - name: Tripura Times
+    enabled: true
+    domain: tripuratimes.com
+    rss:
+      - https://tripuratimes.com/rss.xml
+    sitemaps:
+      - https://tripuratimes.com/news-sitemap.xml
+    archive_sitemaps:   # articles of about the last month (URLs only)
+      - https://tripuratimes.com/sitemap.xml
+
 # Official surveillance reports, stored separately from news (table official_reports) and shown as
 # their own map layer. IDSP weekly outbreak reports are PDFs published by NCDC about two months after
 # the reporting week, so `weeks` (not the news lookback) decides how far back they are kept.

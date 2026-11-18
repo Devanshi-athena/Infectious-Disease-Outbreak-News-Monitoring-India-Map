@@ -116,6 +116,8 @@ def _period_end(url: str) -> datetime | None:
     """Last day covered by an archive sitemap, from its URL (daily or monthly naming)."""
     if m := re.search(r"yyyy=(\d{4})&mm=(\d{1,2})&dd=(\d{1,2})", url):
         return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
+    if m := re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})\.xml$", url):   # one file per day: .../2026-11-10.xml
+        return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
     m = (re.search(r"(\d{4})-([a-z]+)", url, re.I) or re.search(r"([a-z]+)-(\d{4})", url, re.I))
     if m:
         year, month = (m[1], m[2]) if m[1].isdigit() else (m[2], m[1])
@@ -137,7 +139,9 @@ def _parse_urlset(soup: BeautifulSoup, cutoff: datetime | None, method: str) -> 
         loc = node.find("loc")
         if not loc:
             continue
-        title, date, keywords, lastmod = (node.find(n) for n in ("title", "publication_date", "keywords", "lastmod"))
+        # The article title is <news:title>; <image:title> / <video:title> only caption a picture or clip.
+        title = next((t for t in node.find_all("title") if t.prefix not in ("image", "video")), None)
+        date, keywords, lastmod = (node.find(n) for n in ("publication_date", "keywords", "lastmod"))
         published = _parse_iso(date.get_text(strip=True) if date else None)
         modified = _parse_iso(lastmod.get_text(strip=True) if lastmod else None)
         if cutoff and (published or modified) and (published or modified) < cutoff:

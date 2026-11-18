@@ -30,7 +30,8 @@ class Article(Base):
 
     # Collection
     article_id: Mapped[int] = mapped_column(primary_key=True)
-    headline: Mapped[str] = mapped_column(Text)                          # cleaned (no "| City News - Site" suffix)
+    headline: Mapped[str] = mapped_column(Text)                          # cleaned (no "| City News - Site" suffix);
+                                                                         # English translation for other languages
     source_name: Mapped[str] = mapped_column(String(200), index=True)
     article_url: Mapped[str] = mapped_column(String(2000), unique=True)  # canonical URL (from the page if valid)
     link_url: Mapped[str] = mapped_column(String(2000), index=True)      # link as found in the listing (normalised)
@@ -42,9 +43,15 @@ class Article(Base):
     excerpt: Mapped[str | None] = mapped_column(Text)  # RSS summary/description
 
     # Full-text extraction
-    article_text: Mapped[str | None] = mapped_column(Text)
+    article_text: Mapped[str | None] = mapped_column(Text)             # as published (original language)
     extraction_status: Mapped[str | None] = mapped_column(String(20))  # ok/no_text/blocked/unavailable/failed
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)  # fingerprint of article_text
+
+    # Language and translation (articles not in English; translate.py)
+    language: Mapped[str | None] = mapped_column(String(8), index=True)   # ISO 639-1; empty = English (older rows)
+    headline_original: Mapped[str | None] = mapped_column(Text)           # headline as published
+    translation: Mapped[list | None] = mapped_column(JSON)                # [{"source": sentence, "english": ...}]
+                                                                          # for the sentences that were translated
 
     # Keyword matching (headline and article text only)
     disease_tags: Mapped[list | None] = mapped_column(JSON)      # every disease whose keywords matched

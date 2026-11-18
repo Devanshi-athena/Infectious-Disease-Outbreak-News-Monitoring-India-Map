@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 import pandas as pd
 from sqlalchemy import select
 
+from .config import LANGUAGES
 from .db import Article, OfficialReport, last_successful_run
 
 IST = timezone(timedelta(hours=5, minutes=30), "IST")
@@ -25,7 +26,7 @@ VIEWS = {
 COLUMNS = ["article_id", "headline", "source_name", "article_url", "published_at", "collected_at",
            "disease_tags", "relevant_diseases", "relevance", "content_type", "event_status", "relevance_status",
            "country", "state", "district", "locality", "latitude", "longitude", "location_level",
-           "location_text", "location_confidence", "location_review", "story_id"]
+           "location_text", "location_confidence", "location_review", "story_id", "language", "headline_original"]
 
 
 @dataclass
@@ -34,6 +35,7 @@ class Filters:
     diseases: list[str] = field(default_factory=list)   # empty = all
     states: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    languages: list[str] = field(default_factory=list)  # language names, e.g. "Hindi"
     start: date | None = None
     end: date | None = None
     include_abroad: bool = False
@@ -49,8 +51,9 @@ def load_articles(session) -> pd.DataFrame:
     rows = session.execute(select(*[getattr(Article, c) for c in COLUMNS])).all()
     df = pd.DataFrame(rows, columns=COLUMNS)
     if df.empty:
-        return df.assign(diseases=[], effective_relevance=[], published_date=[], place=[])
+        return df.assign(diseases=[], effective_relevance=[], published_date=[], place=[], language_name=[])
     df["diseases"] = [list(r or t or []) for r, t in zip(df["relevant_diseases"], df["disease_tags"])]
+    df["language_name"] = [LANGUAGES.get(code if isinstance(code, str) and code else "en", code) for code in df["language"]]
     # A person's review decision overrides the automatic one.
     df["effective_relevance"] = [s if s in ("relevant", "irrelevant") else a
                                  for s, a in zip(df["relevance_status"], df["relevance"])]
@@ -72,10 +75,12 @@ def place_label(row) -> str:
 def options(df: pd.DataFrame) -> dict[str, list]:
     """Values for the filter widgets."""
     if df.empty:
-        return {"diseases": [], "states": [], "sources": []}
+        return {"diseases": [], "states": [], "sources": [], "languages": []}
+    present = set(df["language_name"])
     return {"diseases": sorted({d for ds in df["diseases"] for d in ds}),
             "states": sorted(s for s in df["state"].dropna().unique()),
-            "sources": sorted(df["source_name"].unique())}
+            "sources": sorted(df["source_name"].unique()),
+            "languages": [name for name in LANGUAGES.values() if name in present]}  # English first
 
 
 def apply_filters(df: pd.DataFrame, f: Filters) -> pd.DataFrame:
@@ -95,6 +100,8 @@ def apply_filters(df: pd.DataFrame, f: Filters) -> pd.DataFrame:
         keep &= df["state"].isin(f.states)
     if f.sources:
         keep &= df["source_name"].isin(f.sources)
+    if f.languages:
+        keep &= df["language_name"].isin(f.languages)
     if f.start:
         keep &= df["published_date"].map(lambda d: d is not None and not pd.isna(d) and d >= f.start)
     if f.end:
@@ -118,6 +125,17 @@ def district_zoom_options(df: pd.DataFrame) -> dict[str, tuple[float, float]]:
     located = df[(df["country"] == "India") & df["latitude"].notna() & df["district"].notna()]
     centres = located.groupby(["district", "state"])[["latitude", "longitude"]].mean()
     return {f"{d}, {s}": (float(lat), float(lon)) for (d, s), (lat, lon) in sorted(centres.iterrows())}
+
+
+def not_on_map(df: pd.DataFrame) -> pd.DataFrame:
+    """Articles that are not abroad but have no map position: the article names no Indian state or district
+    (a national story, or the place could not be read). Newest first, with the reason in `why_unmapped`."""
+    if df.empty:
+        return df.assign(why_unmapped=[])
+    rows = df[(df["country"].isna() | (df["country"] == "India")) & df["latitude"].isna()]
+    why = ["Only India is named, no state or district" if c == "India" else "No Indian place could be found in the article"
+           for c in rows["country"]]
+    return rows.assign(why_unmapped=why).sort_values("published_at", ascending=False)
 
 
 @dataclass
@@ -157,10 +175,20 @@ def published_ist(value) -> datetime | None:
     return to_ist(value.to_pydatetime() if hasattr(value, "to_pydatetime") else value)
 
 
+def original_headline(row) -> str | None:
+    """The headline as published, for an article that was translated (None for English articles)."""
+    value = row.get("headline_original") if hasattr(row, "get") else getattr(row, "headline_original", None)
+    return value if isinstance(value, str) and value else None
+
+
 def popup_html(group: pd.DataFrame) -> str:
     """Card-style popup for one story. Every value comes from external sites, so everything is escaped."""
     first = group.iloc[0]
     status = first["event_status"] if first["event_status"] in EVENT_COLOURS else "unclear"
+    original = original_headline(first)
+    original_html = (f"<div style='color:#5A687D;font-size:13px;margin:-4px 0 8px 0'>{_esc(original)}"
+                     f"<span style='font-size:11px'> · {_esc(first['language_name'])}, translated</span></div>"
+                     if original else "")
     diseases = ", ".join(sorted({d for ds in group["diseases"] for d in ds})) or "—"
     published = published_ist(first["published_at"])
     review = (" · <span style='color:#D64545;font-weight:600'>location needs review</span>"
@@ -174,7 +202,7 @@ def popup_html(group: pd.DataFrame) -> str:
         f"font-size:11px;letter-spacing:.06em;text-transform:uppercase'>{_esc(diseases)} · {EVENT_LABELS[status]}</div>"
         "<div style='padding:10px 12px 6px 12px'>"
         f"<div style=\"font-size:15px;font-weight:600;line-height:1.35;margin-bottom:8px\">"
-        f"{_esc(first['headline'])}</div>"
+        f"{_esc(first['headline'])}</div>{original_html}"
         f"<div style='margin:2px 0'>📍 {_esc(first['place'])}</div>"
         f"<div style='color:#5A687D;font-size:12px;margin:0 0 4px 20px'>{_esc(first['location_level'])} level · "
         f"{_esc(first['location_confidence'])} confidence{review}</div>"
@@ -188,7 +216,8 @@ def latest_reports(df: pd.DataFrame, limit: int = 6) -> list[dict]:
     if df.empty:
         return []
     newest = df.sort_values("published_at", ascending=False).drop_duplicates("story_id").head(limit)
-    return [{"headline": r.headline, "url": r.article_url, "source": r.source_name, "place": r.place,
+    return [{"headline": r.headline, "headline_original": original_headline(r), "language": r.language_name,
+             "url": r.article_url, "source": r.source_name, "place": r.place,
              "diseases": ", ".join(r.diseases), "event_status": r.event_status if r.event_status in EVENT_COLOURS
              else "unclear", "published": published_ist(r.published_at)} for r in newest.itertuples()]
 

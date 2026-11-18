@@ -56,7 +56,10 @@ KIND_RANK = {"state": 0, "district": 1, "town": 2}
 GENERIC_WORDS = {"east", "west", "north", "south", "central", "new", "old", "upper", "lower", "city", "town",
                  "district", "state", "nagar", "road", "station", "market", "bazar", "bazaar", "camp", "colony",
                  "island", "islands", "valley", "hill", "hills", "port", "fort", "cantonment", "rural", "urban",
-                 "pradesh"}
+                 "pradesh",
+                 # deities that the reference data lists as other names of places ("Durga Puja" is not Durg,
+                 # Lord Jagannath is not Puri)
+                 "durga", "jagannath"}
 PLACE_BEFORE = re.compile(r"\b(in|at|from|near|of|across|around|to)\s*$", re.I)
 PLACE_AFTER = re.compile(r"^\s*(village|town|taluk|tehsil|block|mandal|district|city|area|panchayat)\b", re.I)
 # Names worth sending to the geocoder: capitalised words only (no digits or codes like "H1N1", "IgM").

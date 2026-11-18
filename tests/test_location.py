@@ -22,6 +22,13 @@ def test_reference_names_are_cleaned():
     assert normalise_name("Tiruchirāppalli") == "tiruchirappalli"
 
 
+def test_deity_names_are_not_places(resolver):
+    # The reference data lists "Durga" as another name of Durg and "Jagannath" of Puri.
+    result = locate(resolver, "25 injured in rabid dog attack during Durga Puja in Assam", diseases=())
+    assert (result.state, result.district) == ("Assam", None)
+    assert locate(resolver, "Devotees throng Lord Jagannath temple", diseases=()).district != "Puri"
+
+
 def test_district_from_headline(resolver):
     r = locate(resolver, "Dengue cases rise to 58, malaria count reaches 82 in Ludhiana",
                "The district health department said 58 dengue cases were confirmed this year.")

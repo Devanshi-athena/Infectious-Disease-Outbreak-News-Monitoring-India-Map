@@ -24,3 +24,6 @@ Thumbs.db
 # Project documents (kept locally, not part of the code)
 *.docx
 *.pdf
+
+# Downloaded translation models (large, fetched on first use)
+models/

@@ -24,6 +24,9 @@ def classify():
     "2,500 country chickens die as bird flu hits the farm",
     "Cases of high-risk malaria strain in Mumbai jump 535% in 10 years",
     "87 jawans hospitalised with dengue in 10 days",
+    "138 fall ill after consuming prasad",
+    "At least 138 people have taken ill after the feast",
+    "Since a large number of people fell ill after consuming the prasad, food poisoning is suspected",
 ])
 def test_case_count_patterns(sentence):
     assert CASE_COUNT.search(sentence)

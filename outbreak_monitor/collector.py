@@ -23,15 +23,22 @@ One run:
     other sources (story_id); classify relevance (relevance.py); find the outbreak location
     (location.py; Nominatim geocoding only for relevant articles); save. A temporarily failed
     download is retried in later runs (up to MAX_FETCH_ATTEMPTS) instead of being rejected.
+
+Regional-language sources (language other than "en") are screened in their own language: native disease
+names (diseases.yaml -> native_keywords) and screening words (fever, epidemic, ...). Only articles that
+contain one are translated, and only their headline, opening and the sentences with such a word
+(translate.py). Tagging uses the original and the English text; classification and location use the
+English translation. Without the translation model, regional sources are skipped (never stored untranslated).
 """
 
 import argparse
 import hashlib
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -45,15 +52,18 @@ from .gazetteer import FOREIGN_FILE, INDIA_FILE
 from .location import LocationResolver, build_resolver
 from .location import apply as apply_location
 from .logs import setup_logging
-from .matcher import KeywordMatcher
+from .matcher import KeywordMatcher, compile_phrases, normalise_text
 from .official import collect_official
-from .processing import STORY_WINDOW, StoryIndex, clean_headline, tag_content
+from .processing import (STORY_WINDOW, StoryIndex, classification_text, clean_headline, english_body,
+                         tag_content)
 from .relevance import RelevanceClassifier, apply, load_relevance_config
 from .reprocess import reprocess
+from .translate import Translator, get_translator, mostly_latin, select_sentences, split_sentences
 
 log = logging.getLogger(__name__)
 
 METADATA_FIELDS = ("headline", "published_at", "excerpt", "meta_keywords")
+MAX_WORKERS = 64                       # threads for discovery/extraction (each site is rate-limited anyway)
 MAX_FETCH_ATTEMPTS = 3                 # runs in which a temporarily failing article download is tried
 CATCH_UP_AFTER = timedelta(hours=36)   # news sitemaps cover ~48 h; after a longer gap, read archives
 CATCH_UP_MARGIN = timedelta(hours=12)  # overlap with the last successful run
@@ -118,13 +128,17 @@ class _Run:
     """State and statistics for one collection run (used from the main thread only)."""
 
     def __init__(self, session, matcher: KeywordMatcher, classifier: RelevanceClassifier,
-                 locator: LocationResolver, keywords: dict[str, list[str]], cutoff: datetime):
+                 locator: LocationResolver, keywords: dict[str, list[str]], cutoff: datetime,
+                 screening: dict[str, re.Pattern] | None = None, translator: Translator | None = None):
         self.session = session
         self.matcher = matcher
         self.classifier = classifier
         self.locator = locator
         self.keywords = keywords
+        self.primary = {name: kws[0] for name, kws in keywords.items() if kws}  # English name of each disease
         self.cutoff = cutoff
+        self.screening = screening or {}  # language -> native-language screening words (regional sources)
+        self.translator = translator
         retry = (SeenLink.outcome == "fetch_failed") & (SeenLink.attempts < MAX_FETCH_ATTEMPTS)
         self.failed_attempts = {u: n or 1 for u, n in session.execute(select(SeenLink.url, SeenLink.attempts).where(retry))}
         self.known_urls = (set(session.scalars(select(Article.article_url)))
@@ -138,7 +152,8 @@ class _Run:
             self.stories.add(source_name, headline, published, story_id)
         self.stats = dict.fromkeys(["listings_ok", "listings_failed", "candidates", "already_known", "no_keyword",
                                     "too_old", "duplicates", "retry_later", "gave_up", "store_errors", "new",
-                                    "text_ok", "text_missing", "shared_story"], 0)
+                                    "text_ok", "text_missing", "shared_story", "translated",
+                                    "translation_seconds"], 0)
         self.new_by_method: dict[str, int] = {}
         self.errors: list[dict] = []
 
@@ -160,21 +175,45 @@ class _Run:
             self.session.merge(row)
         self.session.commit()
 
-    def prefilter(self, candidates: list[dict]) -> list[dict]:
-        """Drop known links, old items, and listing items without a keyword (except keyword-page links)."""
+    def _screened(self, language: str, *texts: str | None) -> bool:
+        """A screening word of that language (fever, epidemic, ...) in any of the texts."""
+        pattern = self.screening.get(language)
+        return pattern is not None and any(t and pattern.search(normalise_text(t)) for t in texts)
+
+    def prefilter(self, candidates: list[dict], language: str = "en") -> list[dict]:
+        """Drop known links, old items, and listing items without a keyword (except keyword-page links).
+        For a regional-language source a screening word of its language also lets an item through."""
         keep = []
         for c in merge_candidates(candidates):
             self.stats["candidates"] += 1
+            listing_text = (c.get("headline"), c.get("excerpt"), c.get("meta_keywords"))
             if c["url"] in self.known_urls:
                 self.stats["already_known"] += 1
             elif c.get("published_at") and c["published_at"] < self.cutoff:
                 self.stats["too_old"] += 1
-            elif "keyword_page" not in c["methods"] and not self.matcher.match(
-                    c.get("headline"), c.get("excerpt"), c.get("meta_keywords"), urlsplit(c["url"]).path):
+            elif ("keyword_page" not in c["methods"]
+                  and not self.matcher.match(*listing_text, unquote(urlsplit(c["url"]).path))
+                  and not self._screened(language, *listing_text)):
                 self.stats["no_keyword"] += 1
             else:
                 keep.append(c)
         return keep
+
+    def _translate(self, language: str, headline: str, body: str | None) -> tuple[str, list[dict]] | None:
+        """(English headline, translated sentences) of a regional-language article, or None if neither a
+        native disease name nor a screening word occurs in it (then nothing is translated)."""
+        def wanted(sentence: str) -> bool:
+            return bool(self.matcher.mentions(sentence)) or self._screened(language, sentence)
+
+        sentences = split_sentences(body)
+        if not (wanted(headline) or any(map(wanted, sentences))):
+            return None
+        picked = select_sentences(sentences, wanted)
+        started = time.monotonic()
+        english = self.translator.translate(language, [headline] + picked)
+        self.stats["translated"] += 1
+        self.stats["translation_seconds"] += round(time.monotonic() - started)
+        return english[0], [{"source": s, "english": e} for s, e in zip(picked, english[1:])]
 
     # ---------------------------------------------------------------- articles
 
@@ -213,7 +252,10 @@ class _Run:
         use_title = page_title and (set(c["methods"]) & {"keyword_page", "archive"} or not c.get("headline"))
         headline = clean_headline((page_title if use_title else c.get("headline")) or "", source.name)
         text = info.get("article_text")
-        tags, keywords = tag_content(self.matcher, headline, text or c.get("excerpt"))
+        original_body = text or c.get("excerpt")
+        if (source.language != "en" and page_title and mostly_latin(headline) and not mostly_latin(page_title)):
+            # Some regional sites list an English title in their sitemap for an article in their own language
+            headline = clean_headline(page_title, source.name)
         canonical = self._canonical(source, link, info.get("canonical_url"))
         if c.get("published_at"):
             published, date_source = c["published_at"], "listing"
@@ -221,17 +263,46 @@ class _Run:
             published = info.get("published_at")
             date_source = "page" if published else None
         fingerprint = content_fingerprint(text)
+        # Regional sites also publish some articles in English; those are processed as English. The text decides
+        # (a listing title can be in English while the article is not).
+        language = "en" if source.language == "en" or mostly_latin(original_body or headline) else source.language
+
+        def reject(outcome: str, stat: str, attempts: int = 1) -> None:
+            self.stats[stat] += 1
+            self._remember(link, outcome, attempts)
+
+        if source.language == "en" and (headline or original_body) and not mostly_latin(original_body or headline):
+            # Not in English, and the source's language is not one that is translated: never stored untranslated.
+            return reject("fetch_failed" if gave_up else "no_keyword", "no_keyword", MAX_FETCH_ATTEMPTS)
+        headline_original = translation = None
+        if language == "en":
+            body = original_body
+            tags, keywords = tag_content(self.matcher, headline, body)
+            class_headline, class_body = headline, body
+        else:
+            # Checks that need no translation come first, so time is only spent on new articles.
+            if not headline:
+                return reject("fetch_failed" if gave_up else "no_keyword", "no_keyword", MAX_FETCH_ATTEMPTS)
+            if published and published < self.cutoff:
+                return reject("too_old", "too_old")
+            if canonical in self.known_urls or (fingerprint and fingerprint in self.known_hashes):
+                return reject("duplicate", "duplicates")
+            translated = self._translate(language, headline, original_body)
+            if translated is None:
+                return reject("fetch_failed" if gave_up else "no_keyword", "no_keyword", MAX_FETCH_ATTEMPTS)
+            headline_original, (headline, translation) = headline, translated
+            body = english_body(translation)
+            tags, keywords = tag_content(self.matcher, headline, body, headline_original, original_body)
+            class_headline, class_body = classification_text(self.matcher, self.primary, headline_original,
+                                                             headline, translation)
 
         if not headline or not tags:
-            self.stats["no_keyword"] += 1
-            return self._remember(link, "fetch_failed" if gave_up else "no_keyword", MAX_FETCH_ATTEMPTS)
+            return reject("fetch_failed" if gave_up else "no_keyword", "no_keyword", MAX_FETCH_ATTEMPTS)
         if published and published < self.cutoff:
-            self.stats["too_old"] += 1
-            return self._remember(link, "too_old")
+            return reject("too_old", "too_old")
         if (canonical in self.known_urls or (fingerprint and fingerprint in self.known_hashes)
                 or self.stories.is_duplicate(source.name, headline, published)):
-            self.stats["duplicates"] += 1
-            return self._remember(link, "duplicate")
+            return reject("duplicate", "duplicates")
 
         story_id = self.stories.find_story(source.name, headline, published)
         article = Article(
@@ -239,10 +310,10 @@ class _Run:
             collection_method=",".join(c["methods"]), listing_url=c.get("listing_url"),
             published_at=published, date_source=date_source, excerpt=c.get("excerpt"), article_text=text,
             extraction_status=status, content_hash=fingerprint, disease_tags=tags, matched_keywords=keywords,
-            story_id=story_id)
-        apply(article, self.classifier.classify(headline, text or c.get("excerpt"), canonical, published))
+            story_id=story_id, language=language, headline_original=headline_original, translation=translation)
+        apply(article, self.classifier.classify(class_headline, class_body, canonical, published))
         apply_location(article, self.locator.locate_article(
-            headline, text or c.get("excerpt"), article.relevant_diseases or tags, self.keywords,
+            headline, body, article.relevant_diseases or tags, self.keywords,
             geocode=article.relevance == "relevant"))  # external geocoding only for relevant articles
         self.session.add(article)
         self.session.execute(delete(SeenLink).where(SeenLink.url == link))  # e.g. an earlier failed attempt
@@ -269,7 +340,8 @@ class _Run:
             log.info("Stored without text (%s): %s %s", status, link, info.get("error", ""))
 
 
-def collect(session_factory=None, sources=None, disease_config=None, backfill: bool = False) -> dict:
+def collect(session_factory=None, sources=None, disease_config=None, backfill: bool = False,
+            translator: Translator | None = None) -> dict:
     """One collection run over all enabled sources. Returns the run statistics."""
     session_factory = session_factory or get_session_factory()
     sources = [s for s in (sources if sources is not None else load_sources()) if s.enabled]
@@ -280,6 +352,13 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
     locator = build_resolver(session_factory)
     keywords = {d.name: d.keywords for d in diseases}
     current_hash = config_hash()
+    if any(s.language != "en" for s in sources):
+        translator = translator or get_translator()
+        if not translator.available():
+            log.error("Translation model not installed (python -m outbreak_monitor.translate --download): "
+                      "regional-language sources are skipped in this run")
+            sources = [s for s in sources if s.language == "en"]
+    screening = {lang: compile_phrases(words) for lang, words in disease_config.screening_patterns.items() if words}
 
     with session_factory() as session:
         cutoff = utcnow() - timedelta(days=settings.lookback_days)
@@ -302,12 +381,12 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
                 log.info("Configuration changed: re-processing stored articles")
                 reprocess(session, matcher, classifier, locator, keywords)
 
-        run = _Run(session, matcher, classifier, locator, keywords, cutoff)
+        run = _Run(session, matcher, classifier, locator, keywords, cutoff, screening, translator)
         try:
             # Each source goes through discovery -> extraction -> storage on its own, so a slow site
             # never holds up the others. Workers only talk to their own site (per-domain rate limit
-            # in fetch.py); all database work happens here in the main thread.
-            with ThreadPoolExecutor(max_workers=2 * max(1, len(sources))) as pool:
+            # in fetch.py); all database work (and translation) happens here in the main thread.
+            with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, 2 * max(1, len(sources)))) as pool:
                 pending = {pool.submit(discover, s, diseases, cutoff=cutoff, deep=deep,
                                        max_pages=settings.backfill_max_pages, known_urls=set(run.known_urls)):
                            ("discovered", s) for s in sources}
@@ -318,7 +397,7 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
                     if stage == "discovered":
                         found = future.result()
                         listings[source.name] = found.listings
-                        candidates = run.prefilter(found.candidates)
+                        candidates = run.prefilter(found.candidates, source.language)
                         log.info("%-20s %5d links found, %4d to fetch", source.name,
                                  len(found.candidates), len(candidates))
                         pending[pool.submit(_extract_all, candidates)] = ("extracted", source)

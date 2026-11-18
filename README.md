@@ -4,11 +4,11 @@ This tool collects news about infectious disease outbreaks in India, works out w
 
 It is a news-based monitoring prototype, not an official surveillance or early-warning system. News coverage can be incomplete or delayed, and the number of articles says nothing about how many people are ill.
 
-Everything runs locally in Python with open-source libraries. No paid APIs or language models are used.
+Everything runs locally in Python with open-source libraries. No paid APIs or large language models are used. News in 12 Indian languages is translated to English offline with the open-source IndicTrans2 model.
 
 ## What it does
 
-1. Every 30 minutes (or when you press *Refresh now*) it reads RSS feeds, sitemaps and topic pages from 10 Indian news sites and keeps only articles that mention a monitored disease.
+1. Every 30 minutes (or when you press *Refresh now*) it reads RSS feeds, sitemaps and topic pages from 22 English and 113 Indian-language news sites and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
 2. For each article it stores the headline, source, publication date, URL and text, and records which disease keywords matched.
 3. A rule-based classifier decides whether the article reports an outbreak (or a public-health response to one), and whether the report is new, suspected or historical.
 4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline.
@@ -23,9 +23,13 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-python -m outbreak_monitor.collector     # first run collects the last 45 days (takes a while)
-streamlit run app.py                     # dashboard at http://localhost:8501
+hf auth login                                     # once; see "Translation model" below
+python -m outbreak_monitor.translate --download   # once: the translation model (~0.9 GB) into models/
+python -m outbreak_monitor.collector              # first run collects the last 45 days (takes a while)
+streamlit run app.py                              # dashboard at http://localhost:8501
 ```
+
+**Translation model.** Indian-language articles are translated with [IndicTrans2](https://huggingface.co/ai4bharat/indictrans2-indic-en-dist-200M) (AI4Bharat, MIT licence). The model is free, but Hugging Face asks you to accept its terms first: sign in at huggingface.co, open the model page and request access (granted immediately), create a read token under *Settings → Access Tokens*, and run `hf auth login`. Without the model, English sources are still collected and the regional-language sources are skipped (never stored untranslated).
 
 Other useful commands:
 
@@ -39,6 +43,7 @@ python -m evaluation.evaluate                     # accuracy against the labelle
 python -m evaluation.location_eval                # location accuracy on a second labelled set
 python -m evaluation.recall_check                 # compare coverage with Bing News (evaluation only)
 python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
+python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
 pytest                                            # tests
 ```
 
@@ -101,7 +106,47 @@ The collector uses four ways of finding articles, and checks robots.txt before e
 | Scroll | All articles | ✓ | — | `/topic/{term}` | |
 | ET HealthWorld | Top stories | ✓ | monthly | `/tag/{term}/{n}` | |
 
+English regional papers, added for states the national papers cover thinly:
+
+| Source | Region | RSS | News sitemap | Archive | Notes |
+|---|---|---|---|---|---|
+| The New Indian Express | South India | ✓ | ✓ | daily | |
+| Deccan Herald | Karnataka | ✓ | ✓ | daily | |
+| The Tribune | Punjab, Haryana, Himachal, Chandigarh, J&K | — | — | — | RSS refuses access; 14 regional section sitemaps (latest 100 articles each, URLs only) |
+| Telangana Today | Telangana | ✓ | ✓ | — | |
+| OdishaTV | Odisha | ✓ | ✓ | daily | |
+| The Sentinel | Assam | ✓ | ✓ | daily | |
+| Northeast Now | North-East | ✓ | — | post sitemaps | |
+| EastMojo | North-East | ✓ | — | post sitemaps | |
+| The Shillong Times | Meghalaya | ✓ | — | — | |
+| Nagaland Post | Nagaland | ✓ | — | — | |
+| Eastern Mirror | Nagaland | — | ✓ | — | |
+| Tripura Times | Tripura | ✓ | ✓ | about a month | |
+
+Arunachal Times and Imphal Free Press were checked but have no feed or sitemap; The Hills Times is no longer updated.
+
 Sources can be added, paused (`enabled: false`) or removed in `config/sources.yaml`. A new source is backfilled automatically on the next run.
+
+### Indian-language news sites
+
+113 sites in 12 languages, in `config/regional_sources.yaml`. They are read through their news sitemaps and RSS feeds (no topic pages), and every one was checked live before it was added. Where a site splits its news sitemap into parts (Dainik Bhaskar has about 26, covering every district edition), all parts are read. The 23 ETV Bharat state editions, Rajasthan Patrika, Navbharat Times and Live Hindustan also publish archive sitemaps (daily or monthly), which give them a full 45-day backfill.
+
+| Language | Sites | Sources |
+|---|---|---|
+| Hindi | 15 | Dainik Bhaskar, Dainik Jagran, Amar Ujala, Live Hindustan, Patrika, Navbharat Times, Prabhat Khabar, Naidunia, ETV Bharat (10 states), NDTV India, Aaj Tak, News18 Hindi, ABP Live, TV9 Bharatvarsh, Jansatta |
+| Marathi | 12 | Lokmat, Loksatta, Maharashtra Times, Sakal, Divya Marathi, Pudhari, ETV Bharat, ABP Majha, TV9 Marathi, News18 Lokmat, Saam TV, Lokshahi |
+| Bengali | 8 | Bartaman, Sangbad Pratidin, Ei Samay, ETV Bharat, ABP Ananda, News18 Bangla, TV9 Bangla, Uttarbanga Sambad |
+| Telugu | 12 | Eenadu, Sakshi, Andhra Jyothy, Namasthe Telangana, ETV Bharat (Andhra Pradesh, Telangana), TV9 Telugu, NTV, Samayam Telugu, ABP Desam, News18 Telugu, Asianet News Telugu |
+| Tamil | 13 | Daily Thanthi, Dinamalar, Dinakaran, Dinamani, Hindu Tamil Thisai, Maalaimalar, ETV Bharat, Vikatan, Puthiya Thalaimurai, News18 Tamil, Samayam Tamil, ABP Nadu, OneIndia Tamil |
+| Gujarati | 8 | Divya Bhaskar, Gujarat Samachar, ETV Bharat, Indian Express Gujarati, TV9 Gujarati, GSTV, I Am Gujarat, News18 Gujarati |
+| Urdu | 3 | ETV Bharat, News18 Urdu, Qaumi Awaz |
+| Kannada | 9 | Prajavani, Vijay Karnataka, Kannada Prabha, Vijayavani, ETV Bharat, TV9 Kannada, Public TV, Asianet Suvarna News, News18 Kannada |
+| Odia | 7 | Sambad, Dharitri, Prameya (its feed is in English), ETV Bharat, Kanak News, News18 Odia, Argus News |
+| Malayalam | 16 | Malayala Manorama, Mathrubhumi, Madhyamam, Kerala Kaumudi, Deshabhimani, Asianet News, ETV Bharat, Mangalam, Suprabhaatham, Janmabhumi, Samakalika Malayalam, 24 News, MediaOne, Reporter Live, News18 Malayalam, Samayam Malayalam |
+| Punjabi | 6 | Punjabi Jagran, Jagbani, Punjabi Tribune, ETV Bharat, ABP Sanjha, News18 Punjab |
+| Assamese | 4 | Asomiya Pratidin, ETV Bharat, News18 Assam, DY365 |
+
+Anandabazar Patrika (Bengali) is listed but disabled: its sitemap refuses automated access (HTTP 403). Some sites were left out after checking: their robots.txt blocks crawlers (OneIndia Hindi and Kannada), their feeds are stale (Sandesh, Inquilab, Roznama Sahara), or they refuse access (Kalinga TV).
 
 ### Official reports (NCDC / IDSP)
 
@@ -151,6 +196,17 @@ Normally a run only needs the feeds and the 48-hour sitemaps. If the computer wa
 
 **Disease tags** come only from the headline and the article text. For every article the exact keywords that matched are saved, e.g. `{"Dengue": {"headline": ["dengue"], "text": ["dengue cases"]}}`.
 
+### Indian-language articles
+
+Articles from the regional-language sources go through the same steps, with screening and translation in between:
+
+1. **Screening in the original language.** Each disease has its names in the 12 languages (`native_keywords` in `config/diseases.yaml`, e.g. डेंगू, ডেঙ্গু, டெங்கு for dengue). Each language also has a few general words that may point to an outbreak without naming a disease: fever, epidemic, jaundice, loose motions (`screening_words`). An article is downloaded only if its title, summary or URL contains one of them. It is translated only if its headline or text does. Matching follows each script's word boundaries, and allows word endings (डेंगू also matches डेंगूने). Short words must stand alone, so Bengali হাম (measles) doesn't match হামলা (attack). Screening words apply only to their own language: Marathi साथ (epidemic) means "with" in Hindi.
+2. **Selective translation.** Only the headline, the first two sentences (they usually say where and when) and the sentences that contain a disease name or screening word are translated, up to 12 per article. This uses IndicTrans2, on the computer's processor, with no internet needed. A typical article takes 10–20 seconds.
+3. **Tagging and classification.** Diseases are tagged from both the original text and the English translation. The classifier and the location finder then work on the translation, exactly as for English articles. If a sentence names a disease in the original but the translation lost it (for example, a local word for jaundice translated literally), the English disease name is added to that sentence for classification. The stored translation is not changed.
+4. **Storage.** The headline is stored in English, with the original headline, the original text, the language and every translated sentence next to its original. Articles in English on a regional site are recognised by their script and handled as English. Text in another language on an English site is never stored untranslated.
+
+When the configuration changes, stored articles are re-tagged and re-classified from the saved translation; they are not translated again.
+
 When `config/diseases.yaml`, `config/relevance.yaml` or `config/locations.yaml` changes, the next run re-tags, re-classifies and re-locates all stored articles, and searches the sites for any new terms.
 
 ### Relevance and event type
@@ -193,10 +249,12 @@ Each article stores the place in its own words, the level, a confidence (high/me
 `streamlit run app.py` opens it at http://localhost:8501.
 
 - **Map** of India only (the official boundary; everything outside India is masked). There is one marker per story, coloured by event status, and nearby markers group together when zoomed out. Clicking a marker shows the disease, headline, location, date and links to every source that reported it. Official IDSP records appear as green squares on their own layer.
-- **Filters** in the sidebar: disease group, disease, state, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
+- **Filters** in the sidebar: disease group, disease, state, language, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
 - **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
 - **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
-- **Article register** lists every matching article with its location, confidence, event status and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
+- **Translated articles** show the English headline with the original headline and its language underneath, on the map, in the side panel and in the register.
+- **Article register** lists every matching article with its location, confidence, event status, language and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
+- **Not on the map** tab: articles from India that match the filters but name no state or district (national stories, or the place could not be read), with the reason. With *Relevant outbreak reports* selected, these are relevant reports that simply have no place on the map. The caption under the map says how many there are.
 - **Official reports** tab: every IDSP record with all its fields and a link to the weekly PDF.
 - **Refresh now** runs a collection straight away.
 
@@ -221,7 +279,7 @@ The data is stored in SQLite (`data/outbreaks.db`) through SQLAlchemy, using por
 
 | Table | What's in it |
 |---|---|
-| `articles` | headline, source, URLs, publication and collection time, text, disease tags and matched keywords, classification and reasons, story ID, review status, and location (country, state, district, locality, coordinates, level, confidence, review flag, reasons) |
+| `articles` | headline (in English), source, URLs, publication and collection time, text (as published), language, original headline and translated sentences, disease tags and matched keywords, classification and reasons, story ID, review status, and location (country, state, district, locality, coordinates, level, confidence, review flag, reasons) |
 | `official_reports` | one row per IDSP outbreak: ID, report week and PDF link, state, district, disease (as printed and mapped), cases, deaths, dates, status, action taken, coordinates |
 | `seen_links` | links checked but not stored (no keyword, too old, duplicate, failed download) |
 | `listing_status` | when each feed, sitemap or topic page was last read, and its last error |
@@ -236,10 +294,11 @@ To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and 
 
 | File | What it controls |
 |---|---|
-| `config/diseases.yaml` | diseases, their group, keywords and search terms; lookback period (45 days) and refresh interval (30 minutes) |
+| `config/diseases.yaml` | diseases, their group, keywords, names in the 12 Indian languages and search terms; screening words per language; lookback period (45 days) and refresh interval (30 minutes) |
 | `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
 | `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
-| `config/sources.yaml` | news sites and how to read them, plus the official report series |
+| `config/sources.yaml` | English news sites and how to read them, plus the official report series |
+| `config/regional_sources.yaml` | Indian-language news sites, with their language |
 | `config/official_diseases.yaml` | which IDSP disease terms map to which monitored disease |
 
 Changes take effect on the next run. Stored articles are re-classified automatically.
@@ -264,6 +323,7 @@ Third-party data and services:
 | [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
 | [OpenStreetMap tiles](https://operations.osmfoundation.org/policies/tiles/) | base map | light use only; switch to a tile provider for heavier or public use (one line in `app.py`) |
 | [NCDC](https://ncdc.mohfw.gov.in/) | official outbreak reports | reuse with acknowledgement |
+| [IndicTrans2](https://github.com/AI4Bharat/IndicTrans2) (AI4Bharat) | translating Indian-language articles; `indic_processor.py` is from IndicTransToolkit | MIT |
 | Bing News RSS | coverage check in `evaluation/` only, never for collection | Microsoft terms |
 
 ## Project layout
@@ -274,6 +334,8 @@ outbreak_monitor/
   discovery.py             finds article links in feeds, sitemaps and topic pages
   extractor.py             downloads articles and extracts the text
   processing.py            headline cleaning, keyword tagging, story grouping
+  matcher.py               disease keywords in English and Indian languages
+  translate.py             IndicTrans2 translation; indic_processor.py prepares its input
   relevance.py             relevance and event classification
   gazetteer.py, location.py  place reference data and outbreak location
   official.py              NCDC/IDSP weekly reports
@@ -288,6 +350,7 @@ samples/                   example records and database schema
 tests/                     pytest tests
 Dockerfile, docker-compose.yml
 data/                      database and logs (not in git)
+models/                    translation model (downloaded, not in git)
 ```
 
 ## Troubleshooting
@@ -299,6 +362,7 @@ data/                      database and logs (not in git)
 | A source keeps failing | Check the errors in `collection_runs` or `listing_status`. Temporary errors are retried; a site that keeps failing can be disabled in `config/sources.yaml` |
 | No official reports | The NCDC site can be slow. Run `python -m outbreak_monitor.official` and check the log |
 | A keyword change has no effect | It applies from the next run, or run `python -m outbreak_monitor.reprocess` |
+| "Translation model not installed" in the log | Run `python -m outbreak_monitor.translate --download` (after `hf auth login`, see Quick start). Until then regional-language sources are skipped |
 | `ModuleNotFoundError` | Activate the virtual environment and run `pip install -r requirements.txt` |
 
 ## Known limitations
@@ -309,3 +373,7 @@ data/                      database and logs (not in git)
 - Location rules are heuristics. National stories issued from a city can pick up a state, and where a patient lives versus where they were treated isn't always clear. Uncertain cases are flagged for review.
 - IDSP reports arrive about two months late. Districts created recently (e.g. Bengaluru South) aren't in GeoNames and are mapped at state level.
 - Changing the refresh interval needs a scheduler restart.
+- Translation is automatic and can be wrong. Place names are sometimes translated or spelled oddly, so a translated article may be located less precisely than an English one. The original headline is always shown for checking.
+- The disease names and screening words in the 12 languages were collected and tested on real headlines, but not yet reviewed by native speakers.
+- Of the regional-language sources, only ETV Bharat, Rajasthan Patrika, Navbharat Times and Live Hindustan have archives the collector can use, so a 45-day backfill reaches back fully only for them. The other regional sites are covered from their feeds and 48-hour sitemaps onwards. Live Hindustan's district pages make Uttar Pradesh and Bihar the best-covered states; Punjab and Haryana have few regional-language sources that allow collection (Hari Bhoomi and Zee News block crawlers, Punjab Kesari's sitemap is out of date).
+- Translation runs on the processor, so a run with many new regional articles takes longer (about 10–20 seconds per article). The first run, with the backfill, can take a few hours.

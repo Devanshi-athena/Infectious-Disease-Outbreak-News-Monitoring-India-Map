@@ -1,8 +1,20 @@
-"""Match text against the configured disease keywords."""
+"""Match text against the configured disease keywords (English and native-language).
 
-import re
+Uses the `regex` module: unlike `re`, its \\w treats the vowel signs and other combining marks of Indian
+scripts as part of a word, so word boundaries work in Hindi, Tamil, Bengali etc. as they do in English."""
+
+import unicodedata
+
+import regex as re
 
 from .config import Disease
+
+_ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍﻿"))  # joiners vary between publishers
+
+
+def normalise_text(text: str) -> str:
+    """NFC form without zero-width joiners, so differently encoded spellings of one word match."""
+    return unicodedata.normalize("NFC", text).translate(_ZERO_WIDTH)
 
 
 def phrase_pattern(phrase: str) -> str:
@@ -10,7 +22,7 @@ def phrase_pattern(phrase: str) -> str:
     and quote marks ("'Mystery' fever" matches "mystery fever"). A trailing * matches any word ending
     (e.g. "hospitali*")."""
     wildcard = phrase.endswith("*")
-    words = phrase.rstrip("*").split()
+    words = normalise_text(phrase.rstrip("*")).split()
     body = r"""[\s\-'‘’"“”]*[\s-][\s\-'‘’"“”]*""".join(map(re.escape, words))
     return r"(?<!\w)" + body + (r"\w*" if wildcard else r"(?!\w)")
 
@@ -25,9 +37,12 @@ class KeywordMatcher:
     "bird flu outbreak" does not also count as "flu outbreak"."""
 
     def __init__(self, diseases: list[Disease]):
-        self.order = [d.name for d in diseases if d.keywords]   # results follow the configuration order
+        # English keywords and native-language names (config.native_pattern) are matched alike.
+        # English keywords and native-language names (config.native_pattern) are matched alike.
+        self.order = [d.name for d in diseases if d.keywords or d.native_keywords]   # configuration order
         self.superseded_by = {d.name: set(d.superseded_by) for d in diseases if d.superseded_by}
-        entries = sorted(((kw, d.name) for d in diseases for kw in d.keywords), key=lambda e: -len(e[0]))
+        entries = sorted(((kw, d.name) for d in diseases for kw in d.keywords + d.native_patterns),
+                         key=lambda e: -len(e[0]))
         self._entries = entries
         self.pattern = re.compile("|".join(f"(?P<k{i}>{phrase_pattern(kw)})" for i, (kw, _) in enumerate(entries)),
                                   re.IGNORECASE) if entries else None
@@ -37,7 +52,7 @@ class KeywordMatcher:
         if not text or self.pattern is None:
             return []
         found = []
-        for m in self.pattern.finditer(text):
+        for m in self.pattern.finditer(normalise_text(text)):
             keyword, disease = self._entries[int(m.lastgroup[1:])]
             found.append((disease, keyword))
         return found

@@ -1,0 +1,858 @@
+# Regional-language news sources (same format as sources.yaml, plus `language`). Articles are screened in
+# their own language and only the relevant ones are translated to English (outbreak_monitor/translate.py).
+# ETV Bharat sources also have per-state archive sitemaps (one file per day), read during backfill.
+# Ordered within each language by reach. Only links on each source's own domain are collected;
+# robots.txt is checked before every request.
+
+sources:
+  # ---------------------------------------------------------------- Hindi (15)
+  - name: Dainik Bhaskar
+    language: hi
+    domain: www.bhaskar.com
+    sitemaps:   # index of ~26 parts (700 articles each, last 48 h), including all local district editions
+      - https://www.bhaskar.com/sitemaps-v1--sitemap-google-news-index.xml
+
+  - name: Dainik Jagran
+    language: hi
+    domain: www.jagran.com
+    sitemaps:
+      - https://www.jagran.com/all-news-sitemap.xml
+
+  - name: Amar Ujala
+    language: hi
+    domain: www.amarujala.com
+    sitemaps:
+      - https://www.amarujala.com/sitemap-news-v1.xml
+
+  - name: Live Hindustan
+    language: hi
+    domain: www.livehindustan.com
+    sitemaps:
+      - https://www.livehindustan.com/news-sitemap.xml
+    archive_sitemaps:   # monthly parts, e.g. lhfeed/sitemap/2026/nov-6.xml (URLs only)
+      - https://www.livehindustan.com/sitemap-index.xml
+    archive_child_pattern: '/lhfeed/sitemap/\d{4}/[a-z]{3}-\d+\.xml$'
+
+  - name: Patrika
+    language: hi
+    domain: www.patrika.com
+    sitemaps:
+      - https://www.patrika.com/google-news-sitemap-v1.xml
+    archive_sitemaps:   # one sitemap per day (URLs only)
+      - https://www.patrika.com/newurlsitemapindex.xml
+    archive_child_pattern: '/date/google-sitemap-\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Navbharat Times
+    language: hi
+    domain: navbharattimes.indiatimes.com
+    rss:
+      - https://navbharattimes.indiatimes.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://navbharattimes.indiatimes.com/staticsitemap/nbt/news/sitemap-48hours.xml
+    archive_sitemaps:   # monthly parts, e.g. 2026-November-1.xml (URLs only)
+      - https://navbharattimes.indiatimes.com/staticsitemap/nbt/news/sitemap-index.xml
+    archive_child_pattern: '/news/\d{4}-[A-Za-z]+-\d+\.xml$'
+
+  - name: Prabhat Khabar
+    language: hi
+    domain: www.prabhatkhabar.com
+    rss:
+      - https://www.prabhatkhabar.com/feed
+    sitemaps:
+      - https://www.prabhatkhabar.com/news-sitemap.xml
+
+  - name: Naidunia
+    language: hi
+    domain: www.naidunia.com
+    sitemaps:
+      - https://www.naidunia.com/news-sitemap-nd.xml
+
+  - name: ETV Bharat Hindi
+    language: hi
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/hi/uttar-pradesh/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/delhi/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/chhattisgarh/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/himachal-pradesh/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/jharkhand/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/uttarakhand/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/haryana/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/rajasthan/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/bihar/googlenewssitemap.xml
+      - https://www.etvbharat.com/hi/madhya-pradesh/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/hi/uttar-pradesh-sitemap.xml
+      - https://www.etvbharat.com/hi/delhi-sitemap.xml
+      - https://www.etvbharat.com/hi/chhattisgarh-sitemap.xml
+      - https://www.etvbharat.com/hi/himachal-pradesh-sitemap.xml
+      - https://www.etvbharat.com/hi/jharkhand-sitemap.xml
+      - https://www.etvbharat.com/hi/uttarakhand-sitemap.xml
+      - https://www.etvbharat.com/hi/haryana-sitemap.xml
+      - https://www.etvbharat.com/hi/rajasthan-sitemap.xml
+      - https://www.etvbharat.com/hi/bihar-sitemap.xml
+      - https://www.etvbharat.com/hi/madhya-pradesh-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: NDTV India
+    language: hi
+    domain: ndtv.in
+    sitemaps:
+      - https://ndtv.in/newssitemap
+
+  - name: Aaj Tak
+    language: hi
+    domain: www.aajtak.in
+    rss:
+      - https://www.aajtak.in/rss
+    sitemaps:
+      - https://www.aajtak.in/rssfeeds/news-sitemap.xml
+
+  - name: News18 Hindi
+    language: hi
+    domain: hindi.news18.com
+    rss:
+      - https://hindi.news18.com/commonfeeds/v1/hin/rss/text.xml
+    sitemaps:
+      - https://hindi.news18.com/allstory-sitemap-data.xml
+
+  - name: ABP Live
+    language: hi
+    domain: www.abplive.com
+    sitemaps:
+      - https://www.abplive.com/google-news-sitemap.xml
+
+  - name: TV9 Bharatvarsh
+    language: hi
+    domain: www.tv9hindi.com
+    rss:
+      - https://www.tv9hindi.com/feed/gn
+    sitemaps:
+      - https://www.tv9hindi.com/news-sitemap.xml
+
+  - name: Jansatta
+    language: hi
+    domain: www.jansatta.com
+    sitemaps:
+      - https://www.jansatta.com/news-sitemap.xml
+
+  # ---------------------------------------------------------------- Gujarati (8)
+  - name: Divya Bhaskar
+    language: gu
+    domain: www.divyabhaskar.co.in
+    sitemaps:   # index of all parts (last 48 h)
+      - https://www.divyabhaskar.co.in/sitemaps-v1--sitemap-google-news-index.xml
+
+  - name: Gujarat Samachar
+    language: gu
+    domain: www.gujaratsamachar.com
+    sitemaps:
+      - https://www.gujaratsamachar.com/news-sitemap.xml
+
+  - name: ETV Bharat Gujarati
+    language: gu
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/gu/gujarat/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/gu/gujarat-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Indian Express Gujarati
+    language: gu
+    domain: gujarati.indianexpress.com
+    rss:
+      - https://gujarati.indianexpress.com/rss
+    sitemaps:
+      - https://gujarati.indianexpress.com/news-sitemap.xml
+
+  - name: TV9 Gujarati
+    language: gu
+    domain: tv9gujarati.com
+    rss:
+      - https://tv9gujarati.com/feed
+    sitemaps:
+      - https://tv9gujarati.com/news-sitemap.xml
+
+  - name: GSTV
+    language: gu
+    domain: www.gstv.in
+    rss:
+      - https://www.gstv.in/rss
+    sitemaps:
+      - https://www.gstv.in/news-sitemap.xml
+
+  - name: I Am Gujarat
+    language: gu
+    domain: www.iamgujarat.com
+    rss:
+      - https://www.iamgujarat.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://www.iamgujarat.com/staticsitemap/iag/news/sitemap-48hours.xml
+
+  - name: News18 Gujarati
+    language: gu
+    domain: gujarati.news18.com
+    rss:
+      - https://gujarati.news18.com/commonfeeds/v1/guj/rss/latest.xml
+
+  # ---------------------------------------------------------------- Marathi (12)
+  - name: Lokmat
+    language: mr
+    domain: www.lokmat.com
+    sitemaps:
+      - https://www.lokmat.com/sitemap.xml
+
+  - name: Loksatta
+    language: mr
+    domain: www.loksatta.com
+    sitemaps:
+      - https://www.loksatta.com/news-sitemap.xml
+
+  - name: Maharashtra Times
+    language: mr
+    domain: maharashtratimes.com
+    rss:
+      - https://maharashtratimes.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://maharashtratimes.com/staticsitemap/mt/news/sitemap-48hours.xml
+
+  - name: Sakal
+    language: mr
+    domain: www.esakal.com
+    rss:
+      - https://www.esakal.com/feed
+    sitemaps:
+      - https://www.esakal.com/news_sitemap.xml
+
+  - name: Divya Marathi
+    language: mr
+    domain: divyamarathi.bhaskar.com
+    sitemaps:   # index of all parts (last 48 h)
+      - https://divyamarathi.bhaskar.com/sitemaps-v1--sitemap-google-news-index.xml
+
+  - name: Pudhari
+    language: mr
+    domain: pudhari.news
+    rss:
+      - https://pudhari.news/feed
+
+  - name: ETV Bharat Marathi
+    language: mr
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/mr/maharashtra/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/mr/maharashtra-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: ABP Majha
+    language: mr
+    domain: marathi.abplive.com
+    sitemaps:
+      - https://marathi.abplive.com/google-news-sitemap.xml
+
+  - name: TV9 Marathi
+    language: mr
+    domain: www.tv9marathi.com
+    rss:
+      - https://www.tv9marathi.com/feed
+    sitemaps:
+      - https://www.tv9marathi.com/news-sitemap.xml
+
+  - name: News18 Lokmat
+    language: mr
+    domain: news18marathi.com
+    rss:
+      - https://news18marathi.com/commonfeeds/v1/mar/rss/latest.xml
+
+  - name: Saam TV
+    language: mr
+    domain: saamtv.esakal.com
+    sitemaps:
+      - https://saamtv.esakal.com/news_sitemap.xml
+
+  - name: Lokshahi
+    language: mr
+    domain: www.lokshahi.com
+    rss:
+      - https://www.lokshahi.com/rss
+    sitemaps:
+      - https://www.lokshahi.com/news-sitemap.xml
+
+  # ---------------------------------------------------------------- Bengali (9)
+  - name: Anandabazar Patrika
+    enabled: false   # sitemap refuses automated access (HTTP 403), November 2026
+    language: bn
+    domain: www.anandabazar.com
+    sitemaps:
+      - https://www.anandabazar.com/news-sitemap.xml
+
+  - name: Bartaman
+    language: bn
+    domain: bartamanpatrika.com
+    sitemaps:
+      - https://bartamanpatrika.com/news-sitemap.xml
+
+  - name: Sangbad Pratidin
+    language: bn
+    domain: www.sangbadpratidin.in
+    rss:
+      - https://www.sangbadpratidin.in/feed/
+    sitemaps:
+      - https://www.sangbadpratidin.in/news-sitemap.xml
+
+  - name: Ei Samay
+    language: bn
+    domain: eisamay.com
+    rss:
+      - https://eisamay.com/feed
+    sitemaps:
+      - https://eisamay.com/news_sitemap.xml
+
+  - name: ETV Bharat Bengali
+    language: bn
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/bn/west-bengal/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/bn/west-bengal-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: ABP Ananda
+    language: bn
+    domain: bengali.abplive.com
+    sitemaps:
+      - https://bengali.abplive.com/google-news-sitemap.xml
+
+  - name: News18 Bangla
+    language: bn
+    domain: bengali.news18.com
+    rss:
+      - https://bengali.news18.com/commonfeeds/v1/ben/rss/latest.xml
+
+  - name: TV9 Bangla
+    language: bn
+    domain: tv9bangla.com
+    rss:
+      - https://tv9bangla.com/feed
+    sitemaps:
+      - https://tv9bangla.com/news-sitemap.xml
+
+  - name: Uttarbanga Sambad
+    language: bn
+    domain: uttarbangasambad.com
+    rss:
+      - https://uttarbangasambad.com/feed/
+
+  # ---------------------------------------------------------------- Telugu (12)
+  - name: Eenadu
+    language: te
+    domain: www.eenadu.net
+    sitemaps:
+      - https://www.eenadu.net/sitemap-news.xml
+
+  - name: Sakshi
+    language: te
+    domain: www.sakshi.com
+    rss:
+      - https://www.sakshi.com/rss.xml
+
+  - name: Andhra Jyothy
+    language: te
+    domain: www.andhrajyothy.com
+    sitemaps:
+      - https://www.andhrajyothy.com/sitemaps/news-sitemap.xml
+
+  - name: Namasthe Telangana
+    language: te
+    domain: www.ntnews.com
+    rss:
+      - https://www.ntnews.com/feed
+    sitemaps:
+      - https://www.ntnews.com/news-sitemap.xml
+
+  - name: ETV Bharat Telugu (Andhra Pradesh)
+    language: te
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/te/andhra-pradesh/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/te/andhra-pradesh-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: ETV Bharat Telugu (Telangana)
+    language: te
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/te/telangana/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/te/telangana-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: TV9 Telugu
+    language: te
+    domain: tv9telugu.com
+    rss:
+      - https://tv9telugu.com/feed
+    sitemaps:
+      - https://tv9telugu.com/news-sitemap.xml
+
+  - name: NTV Telugu
+    language: te
+    domain: ntvtelugu.com
+    rss:
+      - https://ntvtelugu.com/feed
+    sitemaps:
+      - https://ntvtelugu.com/news-sitemap.xml
+
+  - name: Samayam Telugu
+    language: te
+    domain: telugu.samayam.com
+    rss:
+      - https://telugu.samayam.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://telugu.samayam.com/staticsitemap/telugu/news/sitemap-48hours.xml
+
+  - name: ABP Desam
+    language: te
+    domain: telugu.abplive.com
+    sitemaps:
+      - https://telugu.abplive.com/google-news-sitemap.xml
+
+  - name: News18 Telugu
+    language: te
+    domain: telugu.news18.com
+    rss:
+      - https://telugu.news18.com/commonfeeds/v1/tel/rss/latest.xml
+
+  - name: Asianet News Telugu
+    language: te
+    domain: telugu.asianetnews.com
+    rss:
+      - https://telugu.asianetnews.com/rss
+    sitemaps:
+      - https://telugu.asianetnews.com/news/sitemap.xml
+
+  # ---------------------------------------------------------------- Tamil (13)
+  - name: Daily Thanthi
+    language: ta
+    domain: www.dailythanthi.com
+    rss:
+      - https://www.dailythanthi.com/feed
+    sitemaps:
+      - https://www.dailythanthi.com/news_sitemap.xml
+
+  - name: Dinamalar
+    language: ta
+    domain: www.dinamalar.com
+    sitemaps:
+      - https://www.dinamalar.com/sitemap.xml
+
+  - name: Dinakaran
+    language: ta
+    domain: www.dinakaran.com
+    sitemaps:
+      - https://www.dinakaran.com/sitemap-news.xml
+
+  - name: Dinamani
+    language: ta
+    domain: www.dinamani.com
+    rss:
+      - https://www.dinamani.com/stories.rss
+    sitemaps:
+      - https://www.dinamani.com/news_sitemap.xml
+
+  - name: Hindu Tamil Thisai
+    language: ta
+    domain: www.hindutamil.in
+    rss:
+      - https://www.hindutamil.in/feed
+    sitemaps:
+      - https://www.hindutamil.in/news_sitemap.xml
+
+  - name: Maalaimalar
+    language: ta
+    domain: www.maalaimalar.com
+    rss:
+      - https://www.maalaimalar.com/feed
+    sitemaps:
+      - https://www.maalaimalar.com/news_sitemap.xml
+
+  - name: ETV Bharat Tamil
+    language: ta
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/ta/tamil-nadu/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/ta/tamil-nadu-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Vikatan
+    language: ta
+    domain: www.vikatan.com
+    rss:
+      - https://www.vikatan.com/feed
+    sitemaps:
+      - https://www.vikatan.com/news_sitemap.xml
+
+  - name: Puthiya Thalaimurai
+    language: ta
+    domain: www.puthiyathalaimurai.com
+    rss:
+      - https://www.puthiyathalaimurai.com/feed
+    sitemaps:
+      - https://www.puthiyathalaimurai.com/news_sitemap.xml
+
+  - name: News18 Tamil
+    language: ta
+    domain: tamil.news18.com
+    rss:
+      - https://tamil.news18.com/commonfeeds/v1/tam/rss/latest.xml
+
+  - name: Samayam Tamil
+    language: ta
+    domain: tamil.samayam.com
+    rss:
+      - https://tamil.samayam.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://tamil.samayam.com/staticsitemap/tamil/news/sitemap-48hours.xml
+
+  - name: ABP Nadu
+    language: ta
+    domain: tamil.abplive.com
+    sitemaps:
+      - https://tamil.abplive.com/google-news-sitemap.xml
+
+  - name: OneIndia Tamil
+    language: ta
+    domain: tamil.oneindia.com
+    sitemaps:
+      - https://tamil.oneindia.com/sitemap_news.xml
+
+  # ---------------------------------------------------------------- Urdu (3)
+  - name: ETV Bharat Urdu
+    language: ur
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/ur/national/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/ur/national-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: News18 Urdu
+    language: ur
+    domain: urdu.news18.com
+    rss:
+      - https://urdu.news18.com/commonfeeds/v1/urd/rss/latest.xml
+    sitemaps:
+      - https://urdu.news18.com/commonfeeds/v1/urd/sitemap/google-news.xml
+
+  - name: Qaumi Awaz
+    language: ur
+    domain: www.qaumiawaz.com
+    rss:
+      - https://www.qaumiawaz.com/feed
+    sitemaps:
+      - https://www.qaumiawaz.com/news_sitemap.xml
+
+  # ---------------------------------------------------------------- Kannada (9)
+  - name: Prajavani
+    language: kn
+    domain: www.prajavani.net
+    rss:
+      - https://www.prajavani.net/feed
+    sitemaps:
+      - https://www.prajavani.net/news_sitemap.xml
+
+  - name: Vijay Karnataka
+    language: kn
+    domain: vijaykarnataka.com
+    rss:
+      - https://vijaykarnataka.com/langapi/sitemap/gstandrssfeed.xml
+    sitemaps:
+      - https://vijaykarnataka.com/staticsitemap/vk/news/sitemap-48hours.xml
+
+  - name: Kannada Prabha
+    language: kn
+    domain: www.kannadaprabha.com
+    rss:
+      - https://kannadaprabha.com/feed
+    sitemaps:
+      - https://www.kannadaprabha.com/news_sitemap.xml
+
+  - name: Vijayavani
+    language: kn
+    domain: www.vijayavani.net
+    rss:
+      - https://www.vijayavani.net/feed
+    sitemaps:
+      - https://www.vijayavani.net/news_sitemap.xml
+
+  - name: ETV Bharat Kannada
+    language: kn
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/kn/karnataka/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/kn/karnataka-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: TV9 Kannada
+    language: kn
+    domain: tv9kannada.com
+    rss:
+      - https://tv9kannada.com/feed
+    sitemaps:
+      - https://tv9kannada.com/news-sitemap.xml
+
+  - name: Public TV
+    language: kn
+    domain: publictv.in
+    rss:
+      - https://publictv.in/feed/
+    sitemaps:
+      - https://publictv.in/news-sitemap.xml
+
+  - name: Asianet Suvarna News
+    language: kn
+    domain: kannada.asianetnews.com
+    rss:
+      - https://kannada.asianetnews.com/rss
+    sitemaps:
+      - https://kannada.asianetnews.com/news/sitemap.xml
+
+  - name: News18 Kannada
+    language: kn
+    domain: kannada.news18.com
+    rss:
+      - https://kannada.news18.com/commonfeeds/v1/kan/rss/latest.xml
+
+  # ---------------------------------------------------------------- Odia (7)
+  - name: Sambad
+    language: or
+    domain: sambad.in
+    rss:
+      - https://sambad.in/rss
+    sitemaps:
+      - https://sambad.in/news-sitemap.xml
+
+  - name: Dharitri
+    language: or
+    domain: www.dharitri.com
+    rss:
+      - https://www.dharitri.com/feed/
+
+  - name: Prameya
+    language: or
+    domain: www.prameyanews.com
+    rss:
+      - https://www.prameyanews.com/feed
+
+  - name: ETV Bharat Odia
+    language: or
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/or/odisha/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/or/odisha-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Kanak News
+    language: or
+    domain: kanaknews.com
+    rss:
+      - https://kanaknews.com/rss
+
+  - name: News18 Odia
+    language: or
+    domain: odia.news18.com
+    rss:
+      - https://odia.news18.com/commonfeeds/v1/odi/rss/latest.xml
+
+  - name: Argus News
+    language: or
+    domain: argusnews.in
+    rss:
+      - https://argusnews.in/rss
+
+  # ---------------------------------------------------------------- Malayalam (16)
+  - name: Malayala Manorama
+    language: ml
+    domain: www.manoramaonline.com
+    sitemaps:
+      - https://www.manoramaonline.com/news.news-sitemaplist.xml
+
+  - name: Mathrubhumi
+    language: ml
+    domain: www.mathrubhumi.com
+    sitemaps:
+      - https://www.mathrubhumi.com/sitemaps/mathrubhumi/sitemap_news1.xml
+
+  - name: Madhyamam
+    language: ml
+    domain: www.madhyamam.com
+    rss:
+      - https://www.madhyamam.com/feeds.xml
+    sitemaps:
+      - https://www.madhyamam.com/news-sitemap-daily.xml
+
+  - name: Kerala Kaumudi
+    language: ml
+    domain: keralakaumudi.com
+    rss:
+      - https://www.keralakaumudi.com/rss/topstories
+
+  - name: Deshabhimani
+    language: ml
+    domain: www.deshabhimani.com
+    sitemaps:
+      - https://www.deshabhimani.com/sitemap.xml
+
+  - name: Asianet News
+    language: ml
+    domain: www.asianetnews.com
+    rss:
+      - https://www.asianetnews.com/rss
+    sitemaps:
+      - https://www.asianetnews.com/news/sitemap.xml
+
+  - name: ETV Bharat Malayalam
+    language: ml
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/ml/kerala/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/ml/kerala-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: Mangalam
+    language: ml
+    domain: mangalam.com
+    sitemaps:
+      - https://mangalam.com/sitemap.xml
+
+  - name: Suprabhaatham
+    language: ml
+    domain: www.suprabhaatham.com
+    rss:
+      - https://www.suprabhaatham.com/feed
+    sitemaps:
+      - https://www.suprabhaatham.com/sitemap/news/sitemap.xml
+
+  - name: Janmabhumi
+    language: ml
+    domain: janmabhumi.in
+    rss:
+      - https://janmabhumi.in/feed/
+    sitemaps:
+      - https://janmabhumi.in/lotus-news-sitemap.xml
+
+  - name: Samakalika Malayalam
+    language: ml
+    domain: www.samakalikamalayalam.com
+    rss:
+      - https://www.samakalikamalayalam.com/feed
+    sitemaps:
+      - https://www.samakalikamalayalam.com/news_sitemap.xml
+
+  - name: 24 News
+    language: ml
+    domain: www.twentyfournews.com
+    rss:
+      - https://www.twentyfournews.com/rss
+
+  - name: MediaOne
+    language: ml
+    domain: www.mediaoneonline.com
+    rss:
+      - https://www.mediaoneonline.com/google_feeds.xml
+
+  - name: Reporter Live
+    language: ml
+    domain: www.reporterlive.com
+    sitemaps:
+      - https://www.reporterlive.com/sitemap.xml
+
+  - name: News18 Malayalam
+    language: ml
+    domain: malayalam.news18.com
+    rss:
+      - https://malayalam.news18.com/commonfeeds/v1/mal/rss/latest.xml
+
+  - name: Samayam Malayalam
+    language: ml
+    domain: malayalam.samayam.com
+    rss:
+      - https://malayalam.samayam.com/langapi/sitemap/gstandrssfeed.xml
+
+  # ---------------------------------------------------------------- Punjabi (6)
+  - name: Punjabi Jagran
+    language: pa
+    domain: www.punjabijagran.com
+    sitemaps:
+      - https://www.punjabijagran.com/sitemap/all-news-sitemap.xml
+      - https://www.punjabijagran.com/sitemap/punjab-sitemap.xml   # Punjab news, ~3 days
+
+  - name: Jagbani
+    language: pa
+    domain: jagbani.punjabkesari.in
+    sitemaps:
+      - https://jagbani.punjabkesari.in/newssitemap.xml
+
+  - name: Punjabi Tribune
+    language: pa
+    domain: www.punjabitribuneonline.com
+    sitemaps:
+      - https://www.punjabitribuneonline.com/sitemap/category/9/sitemap.xml
+
+  - name: ETV Bharat Punjabi
+    language: pa
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/pa/punjab/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/pa/punjab-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: ABP Sanjha
+    language: pa
+    domain: punjabi.abplive.com
+    sitemaps:
+      - https://punjabi.abplive.com/google-news-sitemap.xml
+
+  - name: News18 Punjab
+    language: pa
+    domain: punjab.news18.com
+    rss:
+      - https://punjab.news18.com/commonfeeds/v1/pan/rss/latest.xml
+
+  # ---------------------------------------------------------------- Assamese (4)
+  - name: Asomiya Pratidin
+    language: as
+    domain: www.asomiyapratidin.in
+    rss:
+      - https://www.asomiyapratidin.in/rss
+    sitemaps:
+      - https://asomiyapratidin.in/news-sitemap.xml
+
+  - name: ETV Bharat Assamese
+    language: as
+    domain: www.etvbharat.com
+    sitemaps:
+      - https://www.etvbharat.com/as/assam/googlenewssitemap.xml
+    archive_sitemaps:
+      - https://www.etvbharat.com/as/assam-sitemap.xml
+    archive_child_pattern: '/\d{4}-\d{2}-\d{2}\.xml$'
+
+  - name: News18 Assam
+    language: as
+    domain: assam.news18.com
+    rss:
+      - https://assam.news18.com/commonfeeds/v1/asm/rss/latest.xml
+
+  - name: DY365
+    language: as
+    domain: dy365live.com
+    rss:
+      - https://dy365live.com/rss

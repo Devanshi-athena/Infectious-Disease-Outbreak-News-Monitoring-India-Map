@@ -16,8 +16,9 @@ from streamlit_folium import st_folium
 from outbreak_monitor.config import load_disease_config
 from outbreak_monitor.dashboard_data import (EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, REVIEW_OPTIONS, VIEWS,
                                              Filters, apply_filters, district_zoom_options, filter_official,
-                                             latest_reports, load_articles, load_official, official_popup_html,
-                                             options, reports_by_state, save_reviews, story_markers, summary, to_ist)
+                                             latest_reports, load_articles, load_official, not_on_map,
+                                             official_popup_html, options, reports_by_state, save_reviews,
+                                             story_markers, summary, to_ist)
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
 
@@ -208,6 +209,9 @@ with st.sidebar:
     # A group with no disease picked means every disease in that group.
     diseases = chosen_diseases or (disease_options if chosen_groups else [])
     states = st.multiselect("State / UT", opts["states"], placeholder="All states")
+    languages = st.multiselect("Language", opts["languages"], placeholder="All languages",
+                               help="Language the article was published in. Articles in Indian languages are "
+                                    "shown with an English translation of the headline.")
     sources = st.multiselect("Source", opts["sources"], placeholder="All sources")
     lookback = disease_config.settings.lookback_days
     if not articles.empty and articles["published_date"].notna().any():
@@ -228,10 +232,11 @@ with st.sidebar:
         st.success(f"Refresh finished ({result['status']}): {result['new']} new article(s).")
 
 start, end = (dates[0], dates[1]) if isinstance(dates, (tuple, list)) and len(dates) == 2 else (None, None)
-filters = Filters(view=view, diseases=diseases, states=states, sources=sources, start=start, end=end,
-                  include_abroad=include_abroad)
+filters = Filters(view=view, diseases=diseases, states=states, sources=sources, languages=languages, start=start,
+                  end=end, include_abroad=include_abroad)
 matching = apply_filters(articles, filters)
 markers = story_markers(matching)
+unmapped = not_on_map(matching)
 official_matching = filter_official(official, diseases, states)
 official_mapped = (official_matching[official_matching["latitude"].notna()] if show_official
                    and not official_matching.empty else official_matching.iloc[0:0])
@@ -359,7 +364,7 @@ with map_col:
     if zoom_choice in district_centres:
         lat, lon = district_centres[zoom_choice]
         fmap.fit_bounds([[lat - 0.35, lon - 0.35], [lat + 0.35, lon + 0.35]])
-    elif markers and (states or chosen_diseases or sources):
+    elif markers and (states or chosen_diseases or sources or languages):
         lats, lons = [m.latitude for m in markers], [m.longitude for m in markers]
         fmap.fit_bounds([[min(lats) - 0.5, min(lons) - 0.5], [max(lats) + 0.5, max(lons) + 0.5]], max_zoom=9)
     else:
@@ -368,7 +373,9 @@ with map_col:
     st_folium(fmap, height=720, use_container_width=True, returned_objects=[], key="map")
     st.caption("Circles: news stories (one per story; the same report from several publishers is listed in one "
                "popup), at the most specific place the article supports. Green squares: official IDSP outbreak "
-               "records, at the district centre.")
+               "records, at the district centre."
+               + (f" **{len(unmapped)} matching article(s) from India name no state or district and are not on the "
+                  "map**; they are listed in the *Not on the map* tab below." if not unmapped.empty else ""))
 
 with side_col:
     reports = latest_reports(matching, limit=8)
@@ -381,8 +388,10 @@ with side_col:
             f'<span class="chip" style="background:#F1F4F9;color:#334155">{html.escape(r["diseases"] or "—")}</span>'
             f'<div class="title"><a href="{html.escape(r["url"])}" target="_blank" rel="noopener noreferrer">'
             f'{html.escape(r["headline"])}</a></div>'
-            f'<div class="meta">📍 {html.escape(r["place"])}<br>📅 {fmt_ist(r["published"], "%d %b %Y")}'
-            f' · {html.escape(r["source"])}</div></div>')
+            + (f'<div class="meta" style="margin:-.15rem 0 .3rem 0">{html.escape(r["headline_original"])}</div>'
+               if r["headline_original"] else "")
+            + f'<div class="meta">📍 {html.escape(r["place"])}<br>📅 {fmt_ist(r["published"], "%d %b %Y")}'
+            f' · {html.escape(r["source"])} · {html.escape(r["language"])}</div></div>')
     st.markdown('<div class="panel scroll"><div class="panel-title">Latest reports<small>newest first</small></div>'
                 + ("".join(cards) or '<div class="meta">No reports match the current filters.</div>')
                 + '</div>', unsafe_allow_html=True)
@@ -398,9 +407,39 @@ with side_col:
                     'regions and outlets.</div></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- register + about
-register_tab, official_tab, about_tab = st.tabs([f":material/table_rows: Article register ({len(matching)})",
-                                                 f":material/verified: Official reports ({len(official_matching)})",
-                                                 ":material/info: About the data"])
+register_tab, unmapped_tab, official_tab, about_tab = st.tabs([
+    f":material/table_rows: Article register ({len(matching)})",
+    f":material/location_off: Not on the map ({len(unmapped)})",
+    f":material/verified: Official reports ({len(official_matching)})",
+    ":material/info: About the data"])
+
+with unmapped_tab:
+    if unmapped.empty:
+        st.info("Every matching article from India has been placed on the map.")
+    else:
+        st.caption("Articles from India that match the filters but are **not on the map**, because they name no "
+                   "state or district (national stories, or the place could not be read). With *Relevant outbreak "
+                   "reports* selected, these are relevant reports too. They have no state, so they are hidden "
+                   "while a state is selected in the filters.")
+        st.dataframe(
+            unmapped.assign(
+                published=[fmt_ist(to_ist(t.to_pydatetime()), "%d %b %Y %H:%M") if t == t else ""
+                           for t in unmapped["published_at"]],
+                diseases_text=unmapped["diseases"].map(", ".join),
+                event_label=unmapped["event_status"].map(lambda s: EVENT_LABELS.get(s, "—")),
+                headline_original=unmapped["headline_original"].map(lambda v: v if isinstance(v, str) else ""),
+            )[["published", "headline", "headline_original", "diseases_text", "event_label", "why_unmapped",
+               "source_name", "language_name", "article_url"]],
+            hide_index=True, width="stretch", height=420,
+            column_config={
+                "published": "Published (IST)",
+                "headline": st.column_config.TextColumn("Headline", width="large"),
+                "headline_original": st.column_config.TextColumn("Original headline", width="medium"),
+                "diseases_text": "Disease", "event_label": "Event",
+                "why_unmapped": st.column_config.TextColumn("Why not on the map", width="medium"),
+                "source_name": "Source", "language_name": "Language",
+                "article_url": st.column_config.LinkColumn("Original", display_text="open ↗"),
+            })
 
 with register_tab:
     if matching.empty:
@@ -415,16 +454,20 @@ with register_tab:
             location_level=matching["location_level"].map(lambda v: v if isinstance(v, str) and v != "country" else "—"),
             location_confidence=matching["location_confidence"].map(
                 lambda v: v if isinstance(v, str) and v != "none" else "—"),
-        )[["article_id", "published", "headline", "diseases_text", "place", "location_level",
-           "location_confidence", "review_flag", "event_label", "content_type", "source_name", "article_url",
-           "relevance", "relevance_status"]]
+            headline_original=matching["headline_original"].map(lambda v: v if isinstance(v, str) else ""),
+        )[["article_id", "published", "headline", "headline_original", "diseases_text", "place", "location_level",
+           "location_confidence", "review_flag", "event_label", "content_type", "source_name", "language_name",
+           "article_url", "relevance", "relevance_status"]]
         edited = st.data_editor(
             table, hide_index=True, width="stretch", height=460, key="articles",
             disabled=[c for c in table.columns if c != "relevance_status"],
             column_config={
                 "article_id": None,
                 "published": "Published (IST)",
-                "headline": st.column_config.TextColumn("Headline", width="large"),
+                "headline": st.column_config.TextColumn("Headline", width="large",
+                                                        help="English; translated for articles in Indian languages"),
+                "headline_original": st.column_config.TextColumn("Original headline", width="medium",
+                                                                 help="As published, for translated articles"),
                 "diseases_text": "Disease",
                 "place": "Reported location",
                 "location_level": "Level",
@@ -433,6 +476,7 @@ with register_tab:
                 "event_label": "Event",
                 "content_type": "Type",
                 "source_name": "Source",
+                "language_name": "Language",
                 "article_url": st.column_config.LinkColumn("Original", display_text="open ↗"),
                 "relevance": st.column_config.TextColumn("Auto relevance"),
                 "relevance_status": st.column_config.SelectboxColumn(
@@ -478,9 +522,16 @@ with official_tab:
 
 with about_tab:
     st.markdown("""
-**How articles are collected.** Ten Indian news sites are read every 30 minutes through their RSS feeds,
-news sitemaps and topic pages, respecting each site's robots.txt and limiting requests to one per second per site.
-Only articles that mention a configured disease keyword are kept.
+**How articles are collected.** Indian news sites in English and 12 Indian languages (Hindi, Bengali, Marathi,
+Telugu, Tamil, Gujarati, Urdu, Kannada, Odia, Malayalam, Punjabi and Assamese) are read every 30 minutes through
+their RSS feeds, news sitemaps and topic pages, respecting each site's robots.txt and limiting requests to one per
+second per site. Only articles that mention a configured disease keyword are kept.
+
+**How Indian-language articles are handled.** Articles are first screened in their own language with disease names
+and general health words (fever, epidemic, jaundice) in that language. Only those that pass are translated to
+English, offline with the open-source IndicTrans2 model (AI4Bharat, IIT Madras): the headline, the opening and the
+sentences that mention a disease. Classification and location use the translation; the original headline is shown
+alongside it. Translations are automatic and can contain errors.
 
 **How they are classified.** Rule-based analysis of each article's sentences separates outbreak reports and
 public-health responses from research, awareness pieces and passing mentions, and marks reports as new,
@@ -500,8 +551,8 @@ Coverage depends on what the configured outlets publish.
 
 **Data and attribution.** Map tiles © OpenStreetMap contributors, © CARTO. India's boundary: official boundary of
 India as per the Survey of India, compiled by the DataMeet India community (CC0). Place data © GeoNames (CC BY 4.0).
-Geocoding © OpenStreetMap contributors (ODbL), via Nominatim. Articles © their publishers; follow the links to read
-the originals.
+Geocoding © OpenStreetMap contributors (ODbL), via Nominatim. Translation: IndicTrans2 by AI4Bharat (MIT licence).
+Articles © their publishers; follow the links to read the originals.
 """)
 
 st.markdown('<div class="footer"><span>Infectious Disease Outbreak Monitor · prototype</span>'

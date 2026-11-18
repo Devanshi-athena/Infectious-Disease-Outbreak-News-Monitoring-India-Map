@@ -54,10 +54,37 @@ def headline_numbers(headline: str) -> tuple[str, ...]:
     return tuple(n.replace(",", "") for n in re.findall(r"\d[\d,]*\d|\d", headline))
 
 
-def tag_content(matcher: KeywordMatcher, headline: str, body: str | None) -> tuple[list[str], dict]:
-    """Disease tags and the exact keywords behind them, from the headline and article text only."""
-    found = matcher.matched_keywords(headline=headline, text=body)   # every keyword found, for verification
+def tag_content(matcher: KeywordMatcher, headline: str, body: str | None, headline_original: str | None = None,
+                body_original: str | None = None) -> tuple[list[str], dict]:
+    """Disease tags and the exact keywords behind them, from the headline and article text only. For a
+    translated article, both the English translation and the original-language text count."""
+    fields = {"headline": headline, "text": body}
+    if headline_original is not None or body_original is not None:
+        fields |= {"headline_original": headline_original, "text_original": body_original}
+    found = matcher.matched_keywords(**fields)   # every keyword found, for verification
     return matcher.resolve(list(found)), found
+
+
+def english_body(translation: list[dict] | None) -> str:
+    """The translated sentences of a regional-language article, one per line."""
+    return "\n".join(p["english"] for p in translation or [] if p.get("english"))
+
+
+def with_native_diseases(matcher: KeywordMatcher, primary: dict[str, str], original: str, english: str) -> str:
+    """The English translation of one sentence, plus the English name of every disease the original sentence
+    names but the translation lost: "25 new cases of bone-break fever" + " (dengue)". Used only for
+    classification, so a disease named in the original language is not missed because of the translation."""
+    missing = {d for d, _ in matcher.mentions(original)} - {d for d, _ in matcher.mentions(english)}
+    return english + "".join(f" ({primary[d]})" for d in matcher.order if d in missing and d in primary)
+
+
+def classification_text(matcher: KeywordMatcher, primary: dict[str, str], headline_original: str, headline: str,
+                        translation: list[dict] | None) -> tuple[str, str]:
+    """(headline, body) in English for the relevance classifier, for a translated article."""
+    head = with_native_diseases(matcher, primary, headline_original, headline)
+    body = "\n".join(with_native_diseases(matcher, primary, p["source"], p["english"])
+                     for p in translation or [] if p.get("english"))
+    return head, body
 
 
 @dataclass

@@ -41,11 +41,12 @@ MIN_SECONDARY_EVENTS = 2   # outbreak sentences needed for a disease not named i
 # "H1N1"), not a decimal, and not a year ("in 2019,").
 _DIGITS = r"(?<![\w.-])(?!(?:19|20)\d\d(?!\d|,\d{3}))\d+(?:,\d{2,3})*"
 _NUMBER = (rf"(?:{_DIGITS}|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
-           rf"dozens?|hundreds?|thousands?)\b)")
+           rf"dozens?|hundreds?|thousands?|scores|large number|several)\b)")
 _COUNTED = (r"(?:cases?|patients?|deaths?|infections?|infected|people|persons|children|kids|students|residents|"
             r"villagers|\w*birds|chickens|hens|ducks|crows|pigs|animals)")
 _TREND = r"(?:jump|rise|rising|climb|cross|reach|touch|surge|spike|soar|spiral|dip|drop|decline|fall|doubl|tripl)\w*"
-_ILL = r"(?:hospitali[sz]ed|admitted|infected|tested positive|test positive|fell ill|took ill|died|dead|affected)"
+_ILL = (r"(?:hospitali[sz]ed|admitted|infected|tested positive|test positive|fell ill|falls? ill|fallen ill|took ill|"
+        r"taken ill|died|dead|affected)")
 # "40 new dengue cases", "2,500 chickens", "87 jawans hospitalised", "tally rises to 70",
 # "count crossed 500", "cases of X in Y jump 31%"
 CASE_COUNT = re.compile(

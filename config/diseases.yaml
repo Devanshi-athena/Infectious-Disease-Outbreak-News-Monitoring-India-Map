@@ -9,6 +9,15 @@
 #                 whether an article about a disease reports an outbreak.
 #   search_terms  Terms used to open each site's topic/search page (sources.yaml -> keyword_pages).
 #                 Keep these short and broad. Defaults to the first keyword if omitted.
+#   native_keywords
+#                 The disease's names in the languages of the regional sources (regional_sources.yaml),
+#                 per language code. Only names of this disease, not general words like "fever". They are
+#                 matched in the original headline and text, and allow word endings ("डेंगू" also matches
+#                 "डेंगूने"), except words of up to 3 letters and words ending in "=", which must stand alone.
+#
+# screening_words (end of file): general words per language (fever, epidemic, jaundice) that make a regional
+# article worth translating, without naming a disease. The English translation then decides the disease.
+# The native-language words should be reviewed by native speakers.
 
 diseases:
   # ---------------------------------------------------------------- Vector-borne
@@ -17,28 +26,82 @@ diseases:
     keywords: ["dengue", "dengue fever", "dengue haemorrhagic fever", "dengue hemorrhagic fever",
                "dengue shock syndrome", "breakbone fever"]
     search_terms: ["dengue"]
+    native_keywords:
+      hi: ["डेंगू"]
+      mr: ["डेंग्यू"]
+      gu: ["ડેન્ગ્યુ", "ડેન્ગ્યૂ"]
+      bn: ["ডেঙ্গু", "ডেঙ্গি"]
+      as: ["ডেংগু"]
+      te: ["డెంగ్యూ", "డెంగీ"]
+      ta: ["டெங்கு"]
+      ur: ["ڈینگی", "ڈینگو"]
+      kn: ["ಡೆಂಗ್ಯೂ", "ಡೆಂಗಿ"]
+      or: ["ଡେଙ୍ଗୁ"]
+      ml: ["ഡെങ്കി"]
+      pa: ["ਡੇਂਗੂ"]
 
   - name: Malaria
     category: Vector-borne
     keywords: ["malaria", "cerebral malaria", "plasmodium", "falciparum", "vivax"]
     search_terms: ["malaria"]
+    native_keywords:
+      hi: ["मलेरिया"]
+      mr: ["मलेरिया"]
+      gu: ["મેલેરિયા"]
+      bn: ["ম্যালেরিয়া"]
+      as: ["মেলেৰিয়া", "ম্যালেৰিয়া"]
+      te: ["మలేరియా"]
+      ta: ["மலேரியா"]
+      ur: ["ملیریا"]
+      kn: ["ಮಲೇರಿಯಾ"]
+      or: ["ମ୍ୟାଲେରିଆ"]
+      ml: ["മലേറിയ"]
+      pa: ["ਮਲੇਰੀਆ"]
 
   - name: Chikungunya
     category: Vector-borne
     keywords: ["chikungunya", "chikun gunya"]
     search_terms: ["chikungunya"]
+    native_keywords:
+      hi: ["चिकनगुनिया"]
+      mr: ["चिकनगुनिया"]
+      gu: ["ચિકનગુનિયા"]
+      bn: ["চিকুনগুনিয়া"]
+      te: ["చికున్‌గున్యా"]
+      ta: ["சிக்குன்குனியா"]
+      kn: ["ಚಿಕೂನ್ ಗುನ್ಯಾ"]
+      ml: ["ചിക്കുൻഗുനിയ"]
+      pa: ["ਚਿਕਨਗੁਨੀਆ"]
 
   - name: Japanese Encephalitis / AES
     category: Vector-borne
     keywords: ["Japanese encephalitis", "acute encephalitis syndrome", "encephalitis", "AES cases", "AES deaths",
                "brain fever", "chamki bukhar", "chandipura", "chandipura virus"]
     search_terms: ["japanese encephalitis", "encephalitis", "chandipura"]
+    native_keywords:
+      hi: ["दिमागी बुखार", "चांदीपुरा"]
+      gu: ["ચાંદીપુરા"]
+      as: ["জাপানীজ এনকেফেলাইটিছ"]
+      ml: ["മസ്തിഷ്ക ജ്വരം"]
 
   # ---------------------------------------------------------------- Water- and food-borne
   - name: Cholera
     category: Water- and food-borne
     keywords: ["cholera", "vibrio cholerae"]
     search_terms: ["cholera"]
+    native_keywords:
+      hi: ["हैजा"]
+      mr: ["कॉलरा"]
+      gu: ["કોલેરા"]
+      bn: ["কলেরা"]
+      as: ["কলেৰা"]
+      te: ["కలరా"]
+      ta: ["காலரா"]
+      ur: ["ہیضہ"]
+      kn: ["ಕಾಲರಾ"]
+      or: ["କଲେରା"]
+      ml: ["കോളറ"]
+      pa: ["ਹੈਜ਼ਾ"]
 
   - name: Acute Diarrhoeal Disease
     category: Water- and food-borne
@@ -46,11 +109,35 @@ diseases:
     keywords: ["acute diarrhoeal disease", "acute diarrheal disease", "diarrhoea", "diarrhea", "gastroenteritis",
                "food poisoning", "loose motions"]
     search_terms: ["diarrhoea", "gastroenteritis", "food poisoning"]
+    native_keywords:
+      hi: ["डायरिया", "उल्टी दस्त"]
+      mr: ["अतिसार"]
+      bn: ["ডায়রিয়া"]
+      as: ["ডায়েৰিয়া"]
+      te: ["డయేరియా", "అతిసార"]
+      ta: ["வயிற்றுப்போக்கு"]
+      ur: ["اسہال"]
+      kn: ["ಅತಿಸಾರ"]
+      or: ["ଡାଇରିଆ", "ଝାଡ଼ାବାନ୍ତି"]
+      ml: ["വയറിളക്കം"]
+      pa: ["ਡਾਇਰੀਆ", "ਦਸਤ"]
 
   - name: Typhoid
     category: Water- and food-borne
     keywords: ["typhoid", "typhoid fever", "enteric fever", "salmonella typhi"]
     search_terms: ["typhoid"]
+    native_keywords:
+      hi: ["टाइफाइड"]
+      mr: ["टायफॉईड"]
+      gu: ["ટાઈફોઈડ", "ટાઇફોઇડ"]
+      bn: ["টাইফয়েড"]
+      te: ["టైఫాయిడ్"]
+      ta: ["டைபாய்டு"]
+      ur: ["ٹائیفائیڈ"]
+      kn: ["ಟೈಫಾಯಿಡ್"]
+      or: ["ଟାଇଫଏଡ"]
+      ml: ["ടൈഫോയ്ഡ്"]
+      pa: ["ਟਾਈਫਾਈਡ"]
 
   - name: Hepatitis A / E
     category: Water- and food-borne
@@ -64,26 +151,60 @@ diseases:
     category: Emerging and zoonotic
     keywords: ["nipah", "nipah virus"]
     search_terms: ["nipah"]
+    native_keywords:
+      hi: ["निपाह"]
+      bn: ["নিপা="]
+      te: ["నిపా="]
+      ta: ["நிபா="]
+      ur: ["نپاہ"]
+      kn: ["ನಿಪಾ="]
+      ml: ["നിപ"]
 
   - name: Leptospirosis
     category: Emerging and zoonotic
     keywords: ["leptospirosis", "rat fever", "Weil's disease"]
     search_terms: ["leptospirosis", "rat fever"]
+    native_keywords:
+      mr: ["लेप्टो"]
+      ta: ["எலிக்காய்ச்சல்"]
+      kn: ["ಇಲಿ ಜ್ವರ"]
+      ml: ["എലിപ്പനി"]
 
   - name: Scrub Typhus
     category: Emerging and zoonotic
     keywords: ["scrub typhus", "bush typhus", "tsutsugamushi"]
     search_terms: ["scrub typhus"]
+    native_keywords:
+      hi: ["स्क्रब टाइफस"]
+      mr: ["स्क्रब टायफस"]
+      bn: ["স্ক্রাব টাইফাস"]
+      te: ["స్క్రబ్ టైఫస్"]
+      ta: ["ஸ்க்ரப் டைபஸ்"]
+      or: ["ସ୍କ୍ରବ ଟାଇଫସ"]
+      ml: ["ചെള്ളുപനി"]
 
   - name: Kyasanur Forest Disease (KFD)
     category: Emerging and zoonotic
     keywords: ["Kyasanur Forest Disease", "Kyasanur Forest", "KFD", "monkey fever"]
     search_terms: ["monkey fever", "kyasanur forest disease"]
+    native_keywords:
+      kn: ["ಮಂಗನ ಕಾಯಿಲೆ"]
 
   - name: Rabies
     category: Emerging and zoonotic
     keywords: ["rabies", "rabid", "hydrophobia"]
     search_terms: ["rabies"]
+    native_keywords:
+      hi: ["रेबीज"]
+      mr: ["रेबीज"]
+      gu: ["હડકવા"]
+      bn: ["জলাতঙ্ক"]
+      te: ["రేబిస్"]
+      ta: ["ரேபிஸ்", "வெறிநாய்க்கடி"]
+      ur: ["ریبیز"]
+      kn: ["ರೇಬಿಸ್"]
+      or: ["ରେବିଜ"]
+      ml: ["പേവിഷ"]
 
   - name: Other zoonotic outbreaks
     category: Emerging and zoonotic
@@ -93,6 +214,17 @@ diseases:
                "Crimean-Congo haemorrhagic fever", "Crimean-Congo hemorrhagic fever", "CCHF", "mpox", "monkeypox",
                "zoonotic"]
     search_terms: ["bird flu", "anthrax", "mpox"]
+    native_keywords:
+      hi: ["बर्ड फ्लू"]
+      mr: ["बर्ड फ्लू"]
+      bn: ["বার্ড ফ্লু"]
+      as: ["বাৰ্ড ফ্লু"]
+      te: ["బర్డ్ ఫ్లూ"]
+      ta: ["பறவைக் காய்ச்சல்", "பறவைக்காய்ச்சல்"]
+      ur: ["برڈ فلو"]
+      kn: ["ಹಕ್ಕಿ ಜ್ವರ"]
+      or: ["ବାର୍ଡ ଫ୍ଲୁ"]
+      ml: ["പക്ഷിപ്പനി"]
 
   # ---------------------------------------------------------------- Respiratory and vaccine-preventable
   - name: Influenza (H1N1 / H3N2)
@@ -100,16 +232,49 @@ diseases:
     keywords: ["influenza", "swine flu", "seasonal flu", "flu cases", "flu outbreak", "H1N1", "H3N2",
                "influenza A", "influenza B"]
     search_terms: ["influenza", "swine flu", "h1n1", "h3n2"]
+    native_keywords:
+      hi: ["स्वाइन फ्लू"]
+      mr: ["स्वाइन फ्लू"]
+      gu: ["સ્વાઈન ફ્લૂ"]
+      bn: ["সোয়াইন ফ্লু"]
+      te: ["స్వైన్ ఫ్లూ"]
+      ta: ["பன்றிக் காய்ச்சல்", "பன்றிக்காய்ச்சல்"]
+      ur: ["سوائن فلو"]
+      pa: ["ਸਵਾਈਨ ਫਲੂ"]
 
   - name: COVID-19
     category: Respiratory and vaccine-preventable
     keywords: ["COVID-19", "COVID", "coronavirus", "SARS-CoV-2", "novel coronavirus"]
     search_terms: ["covid"]
+    native_keywords:
+      hi: ["कोरोना", "कोविड"]
+      mr: ["कोरोना"]
+      gu: ["કોરોના"]
+      bn: ["করোনা"]
+      as: ["কৰোনা"]
+      te: ["కరోనా"]
+      ta: ["கொரோனா"]
+      ur: ["کورونا"]
+      kn: ["ಕೊರೊನಾ"]
+      or: ["କରୋନା"]
+      ml: ["കോവിഡ്"]
+      pa: ["ਕੋਰੋਨਾ"]
 
   - name: Measles
     category: Respiratory and vaccine-preventable
     keywords: ["measles", "rubella", "measles-rubella"]
     search_terms: ["measles"]
+    native_keywords:
+      hi: ["खसरा"]
+      mr: ["गोवर"]
+      gu: ["ઓરી"]
+      bn: ["হাম"]
+      ta: ["தட்டம்மை"]
+      ur: ["خسرہ"]
+      kn: ["ದಡಾರ"]
+      or: ["ମିଳିମିଳା"]
+      ml: ["അഞ്ചാംപനി"]
+      pa: ["ਖਸਰਾ"]
 
   - name: Diphtheria
     category: Respiratory and vaccine-preventable
@@ -134,6 +299,22 @@ diseases:
                "unidentified disease", "unexplained illness", "unexplained deaths", "mysterious deaths",
                "mystery deaths", "fever outbreak", "viral fever outbreak", "fever cluster", "acute febrile illness"]
     search_terms: ["mystery fever", "mysterious disease"]
+
+# General words that make a regional article worth translating: fever, epidemic, jaundice, loose motions.
+# Per language; they apply only to sources in that language. They never tag a disease by themselves.
+screening_words:
+  hi: ["बुखार", "महामारी", "पीलिया"]
+  mr: ["ताप", "तापा", "कावीळ", "साथीचे आजार", "जुलाब"]           # "तापा": तापाची, तापाने (not तापमान)
+  gu: ["તાવ", "તાવના", "તાવથી", "તાવમાં", "રોગચાળો", "રોગચાળા", "કમળો", "કમળા", "ઝાડા"]
+  bn: ["জ্বর", "জন্ডিস"]
+  as: ["জ্বৰ", "জণ্ডিচ"]
+  te: ["జ్వరం", "జ్వరాలు", "కామెర్లు"]
+  ta: ["காய்ச்சல்", "மஞ்சள் காமாலை"]
+  ur: ["بخار", "وبا", "یرقان"]
+  kn: ["ಜ್ವರ", "ಕಾಮಾಲೆ"]
+  or: ["ଜ୍ୱର", "ଜର", "ଜଣ୍ଡିସ"]
+  ml: ["പനി", "പനിബാധ", "മഞ്ഞപ്പിത്തം"]
+  pa: ["ਬੁਖਾਰ", "ਬੁਖ਼ਾਰ", "ਪੀਲੀਆ"]
 
 settings:
   lookback_days: 45              # first run (backfill) collects this far back; older articles are ignored

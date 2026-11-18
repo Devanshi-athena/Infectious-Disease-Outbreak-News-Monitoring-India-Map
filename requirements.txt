@@ -34,3 +34,14 @@ en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_
 
 # Official reports: tables in the IDSP weekly outbreak report PDFs (NCDC)
 pdfplumber==0.11.10
+
+# Regional-language news: Unicode-aware keyword matching, and offline translation to English with
+# IndicTrans2 (outbreak_monitor/translate.py). CPU-only PyTorch build. transformers stays at 4.44.2:
+# the model's own code does not work with the cache format of later versions.
+regex==2026.9.29
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0+cpu
+transformers==4.44.2
+sentencepiece==0.2.3
+sacremoses==0.2.0
+indic-nlp-library-itt==0.1.1
