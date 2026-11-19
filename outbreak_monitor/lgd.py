@@ -161,6 +161,46 @@ class LgdCodes:
         return out
 
 
+def build_new_districts(user_agent: str, delay: float = 1.1) -> dict:
+    """Add the LGD districts that the reference places (GeoNames) lack, e.g. districts created since 2020,
+    to reference/lgd_new_districts.csv, with coordinates from one OpenStreetMap Nominatim lookup each. A result
+    is kept only if Nominatim places it in the district's state; districts without one are listed, not guessed."""
+    from geopy.geocoders import Nominatim
+    from .gazetteer import LGD_NEW_DISTRICTS_FILE, _read_places, INDIA_FILE, normalise_name
+    reference = _read_places(INDIA_FILE)
+    lookup = LgdCodes(places=reference)
+    known = {int(d["district_code"]) for d, _ in lookup.districts.values()}
+    state_name = {s["state_code"]: name for name, s in lookup.states.items()}   # LGD state code -> reference name
+    geocoder = Nominatim(user_agent=user_agent, timeout=30)
+    rows, missing = [], []
+    for d in load("districts"):
+        if int(d["district_code"]) in known or d["state_code"] not in state_name:
+            continue
+        state = state_name[d["state_code"]]
+        name = d["district"].title() if d["district"].isupper() else d["district"]
+        time.sleep(delay)
+        hit = None
+        for query in (f"{name} district, {state}, India", f"{name}, {state}, India"):
+            hit = geocoder.geocode(query, country_codes="in", addressdetails=True, language="en")
+            if hit and normalise_name(hit.raw.get("address", {}).get("state", "")) == normalise_name(state):
+                break
+            hit = None
+            time.sleep(delay)
+        if not hit:
+            missing.append(f"{name}, {state}")
+            continue
+        aliases = sorted({normalise_name(n) for n in (d["district"], name.replace("-", " "))} - {normalise_name(name)})
+        rows.append({"geonameid": f"LGD-{d['district_code']}", "name": name, "kind": "district", "state": state,
+                     "district": name, "latitude": round(hit.latitude, 5), "longitude": round(hit.longitude, 5),
+                     "population": 0, "aliases": "|".join(a for a in aliases if a)})
+    with open(LGD_NEW_DISTRICTS_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["geonameid", "name", "kind", "state", "district", "latitude", "longitude",
+                                               "population", "aliases"])
+        writer.writeheader()
+        writer.writerows(sorted(rows, key=lambda r: (r["state"], r["name"])))
+    return {"added": len(rows), "not_found": missing}
+
+
 _shared: LgdCodes | None = None
 
 
@@ -176,10 +216,16 @@ def main():
     from .logs import setup_logging
     parser = argparse.ArgumentParser(description="LGD codes of states, districts and sub-districts.")
     parser.add_argument("--download", action="store_true", help=f"download the lists into {LGD_DIR}")
+    parser.add_argument("--new-districts", action="store_true",
+                        help="add the LGD districts missing from the reference places, located with Nominatim")
     args = parser.parse_args()
     setup_logging()
     if args.download:
         print("Downloaded:", download())
+    if args.new_districts:
+        from .config import CONFIG_DIR, _read_yaml
+        geo = _read_yaml(CONFIG_DIR / "locations.yaml").get("geocoding") or {}
+        print("New districts:", build_new_districts(geo["user_agent"], float(geo.get("min_delay_seconds", 1.1))))
 
 
 if __name__ == "__main__":

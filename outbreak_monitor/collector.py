@@ -48,7 +48,7 @@ from .db import (Article, CollectionRun, ListingStatus, SeenLink, get_session_fa
                  utcnow)
 from .discovery import discover, keyword_page_templates
 from .extractor import content_fingerprint, extract_article
-from .gazetteer import FOREIGN_FILE, INDIA_FILE
+from .gazetteer import FOREIGN_FILE, INDIA_FILE, LGD_NEW_DISTRICTS_FILE
 from .location import LocationResolver, build_resolver
 from .location import apply as apply_location
 from .logs import setup_logging
@@ -68,7 +68,8 @@ MAX_FETCH_ATTEMPTS = 3                 # runs in which a temporarily failing art
 CATCH_UP_AFTER = timedelta(hours=36)   # news sitemaps cover ~48 h; after a longer gap, read archives
 CATCH_UP_MARGIN = timedelta(hours=12)  # overlap with the last successful run
 KEYWORD_FILES = (CONFIG_DIR / "diseases.yaml",)
-CONFIG_FILES = KEYWORD_FILES + (CONFIG_DIR / "relevance.yaml", CONFIG_DIR / "locations.yaml", INDIA_FILE, FOREIGN_FILE)
+CONFIG_FILES = KEYWORD_FILES + (CONFIG_DIR / "relevance.yaml", CONFIG_DIR / "locations.yaml", CONFIG_DIR / "lgd.yaml",
+                                INDIA_FILE, FOREIGN_FILE, LGD_NEW_DISTRICTS_FILE)
 
 
 def _digest(paths) -> str:

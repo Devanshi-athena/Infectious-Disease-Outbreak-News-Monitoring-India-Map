@@ -118,6 +118,17 @@ def test_common_words_and_people_are_not_places(resolver):
     assert r.country is None
 
 
+def test_place_names_used_as_person_names(resolver):
+    r = locate(resolver, "Norovirus cases in Kolkata",
+               "All had loose motion, said Sayan Chakrabarty, infectious diseases physician.")
+    assert (r.state, r.district) == ("West Bengal", "Kolkata")
+    r = locate(resolver, "CM reviews dengue prevention",
+               "Ministers N Anand (WRD), Aadhav Arjuna (PWD) attended the dengue review in Chennai.")
+    assert r.state == "Tamil Nadu"
+    assert locate(resolver, "Dengue cases in Anand district", "Officials reported 12 cases.").district == "Anand"
+    assert locate(resolver, "Dengue cases in Kotputli-Behror").district == "Kotputli-Behror"
+
+
 def test_outbreak_abroad(resolver):
     r = locate(resolver, "Pennsylvania measles cases rise to 1,317, state health department says",
                "Pennsylvania reported 1,317 measles cases.", diseases=("Measles",))

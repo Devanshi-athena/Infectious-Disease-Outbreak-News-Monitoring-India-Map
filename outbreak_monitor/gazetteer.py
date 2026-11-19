@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REFERENCE_DIR = ROOT / "reference"
 INDIA_FILE = REFERENCE_DIR / "india_places.csv"
 FOREIGN_FILE = REFERENCE_DIR / "foreign_places.csv"
+LGD_NEW_DISTRICTS_FILE = REFERENCE_DIR / "lgd_new_districts.csv"   # LGD districts missing from GeoNames
 BOUNDARY_FILE = REFERENCE_DIR / "india_boundary.geojson"
 # Official boundary of India as per the Survey of India, compiled by the DataMeet community (CC0).
 BOUNDARY_SOURCE = "https://raw.githubusercontent.com/datameet/maps/master/Country/india-composite.geojson"
@@ -217,12 +218,21 @@ def india_mask(boundary: dict) -> dict:
 
 # ---------------------------------------------------------------- load
 
-def load_india(path: Path = INDIA_FILE) -> list[Place]:
+def _read_places(path: Path) -> list[Place]:
     with open(path, encoding="utf-8") as f:
         return [Place(r["geonameid"], r["name"], r["kind"], r["state"], r["district"] or None,
                       float(r["latitude"]), float(r["longitude"]), int(r["population"]),
                       [a for a in r["aliases"].split("|") if a])
                 for r in csv.DictReader(f)]
+
+
+def load_india(path: Path = INDIA_FILE) -> list[Place]:
+    """Reference places of India, plus the districts that are in the Local Government Directory but not (yet)
+    in GeoNames (LGD_NEW_DISTRICTS_FILE, built by python -m outbreak_monitor.lgd --new-districts)."""
+    places = _read_places(path)
+    if path == INDIA_FILE and LGD_NEW_DISTRICTS_FILE.exists():
+        places += _read_places(LGD_NEW_DISTRICTS_FILE)
+    return places
 
 
 def load_foreign(path: Path = FOREIGN_FILE) -> dict[str, str]:

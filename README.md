@@ -44,6 +44,7 @@ python -m evaluation.location_eval                # location accuracy on a secon
 python -m evaluation.recall_check                 # compare coverage with Bing News (evaluation only)
 python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
 python -m outbreak_monitor.lgd --download         # refresh the LGD code lists (rarely needed)
+python -m outbreak_monitor.lgd --new-districts    # add LGD districts missing from GeoNames, located with Nominatim
 python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
 pytest                                            # tests
 ```
@@ -239,7 +240,9 @@ A person's review in the dashboard (`relevance_status`: pending, relevant or irr
 
 Each article is placed at the most specific level it supports: state, district or town. A report that only names a district is mapped at the district, and no more precise point is invented.
 
-- Place names are found with spaCy and matched against reference data built from [GeoNames](https://www.geonames.org): all 36 states and UTs, 763 districts and about 6,600 towns, with spelling variants (Gurgaon/Gurugram, Trichy/Tiruchirappalli) and abbreviations like "TN" or "J&K".
+- Place names are found with spaCy and matched against reference data built from [GeoNames](https://www.geonames.org): all 36 states and UTs, 763 districts and about 6,600 towns, plus the 30 newer districts that are in LGD but not yet in GeoNames (`reference/lgd_new_districts.csv`, e.g. Kotputli-Behror, Beawar, Pandhurna), with spelling variants (Gurgaon/Gurugram, Trichy/Tiruchirappalli) and abbreviations like "TN" or "J&K".
+- Hyphenated names (Kotputli-Behror) are matched as written, not split into two towns.
+- Place names used as people's names are skipped: after initials ("N Anand") or after "said", "Dr", "Minister" and similar words when followed by a surname ("said Sayan Chakrabarty"). "Anand district" is still a place.
 - Mentions are weighted: a place in the headline counts most, then places in sentences about the outbreak.
 - The dateline ("PUNE:") and bylines are ignored, unless the outbreak is clearly reported there. Places named only as the lab that tested samples, or as part of a hospital's name, are down-weighted.
 - Ambiguous names (Aurangabad in Bihar or Maharashtra) are resolved using the state the article mentions. If that's not possible, the location is flagged for review.

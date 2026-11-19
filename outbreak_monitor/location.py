@@ -60,6 +60,12 @@ GENERIC_WORDS = {"east", "west", "north", "south", "central", "new", "old", "upp
                  # deities that the reference data lists as other names of places ("Durga Puja" is not Durg,
                  # Lord Jagannath is not Puri)
                  "durga", "jagannath"}
+# Words before a person's name ("said Sayan Chakrabarty", "Dr Anand Kumar") and words that make a following
+# capitalised word part of a place ("Anand District", "Pune City").
+PERSON_CUES = {"said", "says", "told", "added", "dr", "mr", "mrs", "ms", "shri", "smt", "prof", "minister", "mla",
+               "mp", "collector", "officer", "commissioner", "secretary", "director", "chairman", "doctor", "by"}
+PLACE_TYPE_WORDS = {"district", "city", "town", "village", "state", "municipal", "municipality", "corporation",
+                    "division", "block", "taluk", "tehsil", "mandal", "nagar", "road", "cantonment", "rural", "urban"}
 PLACE_BEFORE = re.compile(r"\b(in|at|from|near|of|across|around|to)\s*$", re.I)
 PLACE_AFTER = re.compile(r"^\s*(village|town|taluk|tehsil|block|mandal|district|city|area|panchayat)\b", re.I)
 # Names worth sending to the geocoder: capitalised words only (no digits or codes like "H1N1", "IgM").
@@ -153,7 +159,9 @@ class LocationResolver:
             self.by_name[normalise_name(p.name)].append((p, True))
             for alias in p.aliases:
                 self.by_name[alias].append((p, False))
-        extra_patterns = []
+        # Names written with a hyphen ("Kotputli-Behror") are also matched as written: the tokenizer splits the
+        # hyphen off, so the hyphen-free reference form alone would not match the text.
+        extra_patterns = sorted({p.name for p in self.places if "-" in p.name})
         for alias, target in (config.get("aliases") or {}).items():
             self.by_name[normalise_name(alias)].extend((p, True) for p in self._lookup_target(target))
             extra_patterns += [alias, alias.replace("'", "’")]  # as written, e.g. "G'nagar" / "G’nagar"
@@ -166,6 +174,19 @@ class LocationResolver:
         names = [n for n in self.by_name if len(n) >= 3] + extra_patterns
         for i in range(0, len(names), 1000):
             self.matcher.add("PLACE", [self.nlp.make_doc(n) for n in names[i:i + 1000]])
+
+    @staticmethod
+    def _person_like(doc, start: int, end: int) -> bool:
+        """A place name used as a person's name, which the language model often misses in Indian text:
+        after initials ("Ministers N Anand", "C T R Nirmalkumar"), or after a speech verb or a title and followed
+        by another capitalised word ("said Sayan Chakrabarty", "Dr Anand Kumar")."""
+        before = doc[max(0, start - 3):start]
+        if before and len(before[-1].text.rstrip(".")) == 1 and before[-1].text[:1].isupper():
+            return True                                         # "N Anand", "C. T. R. Nirmalkumar"
+        after = doc[end] if end < len(doc) else None
+        followed_by_name = (after is not None and after.text[:1].isupper() and after.is_alpha
+                            and after.lower_ not in PLACE_TYPE_WORDS)
+        return followed_by_name and bool(before) and before[-1].lower_.rstrip(".") in PERSON_CUES
 
     def show(self, name: str | None) -> str | None:
         """Display name (config display_names override outdated reference names)."""
@@ -208,9 +229,15 @@ class LocationResolver:
             norm = normalise_name(text)
             return None if norm in GENERIC_WORDS else self.foreign.get(norm)
 
+        # A reference name longer than an entity inside it wins ("Kotputli-Behror" district, not the towns
+        # "Kotputli" and "Behror" the model found).
+        longer_names = [(s, e) for _, s, e in self.matcher(doc) if self._candidates(doc[s:e].text)]
+
         # 1. Named entities first, so multi-word names stay whole ("North Carolina", "East Singhbhum").
         for ent in place_ents:
             if ent.label_ in ("FAC", "ORG"):  # used only as evidence for dictionary matches below
+                continue
+            if any(s <= ent.start and ent.end <= e and e - s > ent.end - ent.start for s, e in longer_names):
                 continue
             name = re.sub(r"^(the)\s+", "", ent.text, flags=re.I)
             name = re.sub(r"[’']s$", "", name)
@@ -230,6 +257,8 @@ class LocationResolver:
                 continue
             # part of a longer person's name ("Krishna Kumar"); a lone mislabelled place name is kept
             if any(ps <= span.start_char and span.end_char <= pe and (pe - ps) > len(span.text) for ps, pe in person):
+                continue
+            if self._person_like(doc, start, end):
                 continue
             places = self._candidates(span.text)
             if not places:
