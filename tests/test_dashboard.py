@@ -168,3 +168,19 @@ def test_export_samples(factory, tmp_path):
     assert "article_text" not in rows[0]                      # publishers' text is never exported
     assert json.loads(rows[0]["disease_tags"]) == ["Dengue"]  # JSON columns as JSON
     assert "CREATE TABLE official_reports" in (tmp_path / "samples" / "schema.sql").read_text(encoding="utf-8")
+
+
+def test_state_disease_table_counts_each_story_once(factory):
+    from outbreak_monitor.dashboard_data import state_disease_table
+    with factory() as s:
+        s.add(article(8, state="Kerala", district="Kozhikode", disease_tags=["Dengue", "Measles"],
+                      relevant_diseases=["Dengue", "Measles"], story_id=8))   # one report naming two diseases
+        s.commit()
+        df = load_articles(s)
+    table = state_disease_table(apply_filters(df, Filters(view="relevant")), ["Dengue", "Measles"])
+    assert list(table.columns) == ["Total", "Dengue", "Measles"]     # most-reported disease first (3 vs 2)
+    assert list(table.index) == ["Kerala", "Maharashtra"]              # most reports first (tie: alphabetical)
+    # Maharashtra: articles 1 and 2 are one story, 6 is another; the US report (5) is not counted
+    assert table.loc["Maharashtra"].tolist() == [2, 2, 0]
+    # Kerala: report 3 (measles) and report 8 (dengue + measles): 2 reports in total, not 3
+    assert table.loc["Kerala"].tolist() == [2, 1, 2]

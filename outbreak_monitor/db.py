@@ -84,6 +84,10 @@ class Article(Base):
     location_source: Mapped[str | None] = mapped_column(String(20))      # reference / nominatim
     location_reasons: Mapped[list | None] = mapped_column(JSON)
     location_candidates: Mapped[list | None] = mapped_column(JSON)       # every Indian place considered
+    # Local Government Directory codes of the location (lgd.py); sub-district only when uniquely identified
+    state_lgd_code: Mapped[int | None] = mapped_column(Integer, index=True)
+    district_lgd_code: Mapped[int | None] = mapped_column(Integer, index=True)
+    subdistrict_lgd_code: Mapped[int | None] = mapped_column(Integer)
 
 
 class OfficialReport(Base):
@@ -110,6 +114,9 @@ class OfficialReport(Base):
     longitude: Mapped[float | None] = mapped_column(Float)
     location_level: Mapped[str | None] = mapped_column(String(20))       # district / state
     location_confidence: Mapped[str | None] = mapped_column(String(20))
+    state_lgd_code: Mapped[int | None] = mapped_column(Integer, index=True)      # Local Government Directory
+    district_lgd_code: Mapped[int | None] = mapped_column(Integer, index=True)
+    subdistrict_lgd_code: Mapped[int | None] = mapped_column(Integer)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

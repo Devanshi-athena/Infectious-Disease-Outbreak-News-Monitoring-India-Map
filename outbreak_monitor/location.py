@@ -589,6 +589,17 @@ def apply(article, result: LocationResult) -> None:
     article.location_confidence, article.location_review = result.confidence, result.review
     article.location_source = result.source
     article.location_reasons, article.location_candidates = list(result.reasons), list(result.candidates)
+    set_lgd_codes(article, result.country, result.state, result.district, result.locality)
+
+
+def set_lgd_codes(record, country: str | None, state: str | None, district: str | None = None,
+                  locality: str | None = None) -> None:
+    """LGD codes for a place in India (none abroad, or if the LGD lists have not been downloaded)."""
+    from .lgd import lgd_codes
+    lookup = lgd_codes() if country in (None, "India") and state else None
+    codes = lookup.codes(state, district, locality) if lookup else {}
+    for key in ("state_lgd_code", "district_lgd_code", "subdistrict_lgd_code"):
+        setattr(record, key, codes.get(key))
 
 
 def build_resolver(session_factory, config: dict | None = None) -> LocationResolver:

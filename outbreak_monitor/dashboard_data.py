@@ -26,7 +26,16 @@ VIEWS = {
 COLUMNS = ["article_id", "headline", "source_name", "article_url", "published_at", "collected_at",
            "disease_tags", "relevant_diseases", "relevance", "content_type", "event_status", "relevance_status",
            "country", "state", "district", "locality", "latitude", "longitude", "location_level",
-           "location_text", "location_confidence", "location_review", "story_id", "language", "headline_original"]
+           "location_text", "location_confidence", "location_review", "story_id", "language", "headline_original",
+           "state_lgd_code", "district_lgd_code", "subdistrict_lgd_code"]
+
+
+def lgd_label(row) -> str:
+    """'LGD 9 / 133' (state / district, and sub-district when known), or '' without codes."""
+    codes = [getattr(row, k, None) if not hasattr(row, "get") else row.get(k)
+             for k in ("state_lgd_code", "district_lgd_code", "subdistrict_lgd_code")]
+    codes = [str(int(c)) for c in codes if c is not None and not (isinstance(c, float) and pd.isna(c))]
+    return "LGD " + " / ".join(codes) if codes else ""
 
 
 @dataclass
@@ -127,6 +136,40 @@ def district_zoom_options(df: pd.DataFrame) -> dict[str, tuple[float, float]]:
     return {f"{d}, {s}": (float(lat), float(lon)) for (d, s), (lat, lon) in sorted(centres.iterrows())}
 
 
+def _state_disease_table(rows: pd.DataFrame, key: str, disease_order: list[str] | None) -> pd.DataFrame:
+    """States x diseases from rows with state, diseases (list) and a report key; counts distinct keys, so a
+    report naming two diseases counts once in each disease and once in the state's total."""
+    rows = rows[rows["state"].notna()][["state", "diseases", key]]
+    long = rows.explode("diseases").dropna(subset=["diseases"])
+    if long.empty:
+        return pd.DataFrame()
+    table = long.pivot_table(index="state", columns="diseases", values=key, aggfunc="nunique", fill_value=0)
+    # Most-reported diseases first; ties in the configuration order
+    rank = {d: i for i, d in enumerate(disease_order or [])}
+    table = table[sorted(table.columns, key=lambda d: (-table[d].sum(), rank.get(d, len(rank)), d))]
+    table.insert(0, "Total", long.groupby("state")[key].nunique().reindex(table.index))
+    table.columns.name = None
+    table.index.name = "State / UT"
+    return table.astype(int).sort_values("Total", ascending=False, kind="stable")
+
+
+def state_disease_table(df: pd.DataFrame, disease_order: list[str] | None = None) -> pd.DataFrame:
+    """News reports per state (rows) and disease (columns, most reported first), with each state's total; states
+    with most reports first. A report
+    is a story: the same report from several publishers counts once. Only articles placed in a state of India."""
+    if df.empty:
+        return pd.DataFrame()
+    return _state_disease_table(df[df["country"] == "India"], "story_id", disease_order)
+
+
+def official_state_disease_table(df: pd.DataFrame, disease_order: list[str] | None = None) -> pd.DataFrame:
+    """Official IDSP outbreak records per state and disease, as state_disease_table. Records whose disease is not
+    on the list are not counted."""
+    if df.empty:
+        return pd.DataFrame()
+    return _state_disease_table(df, "report_id", disease_order)
+
+
 def not_on_map(df: pd.DataFrame) -> pd.DataFrame:
     """Articles that are not abroad but have no map position: the article names no Indian state or district
     (a national story, or the place could not be read). Newest first, with the reason in `why_unmapped`."""
@@ -205,7 +248,8 @@ def popup_html(group: pd.DataFrame) -> str:
         f"{_esc(first['headline'])}</div>{original_html}"
         f"<div style='margin:2px 0'>📍 {_esc(first['place'])}</div>"
         f"<div style='color:#5A687D;font-size:12px;margin:0 0 4px 20px'>{_esc(first['location_level'])} level · "
-        f"{_esc(first['location_confidence'])} confidence{review}</div>"
+        f"{_esc(first['location_confidence'])} confidence{review}"
+        + (f" · {_esc(lgd_label(first))}" if lgd_label(first) else "") + "</div>"
         f"<div style='margin:2px 0'>📅 {published.strftime('%d %b %Y, %H:%M IST') if published else '—'}</div>"
         f"<div style='margin-top:8px;color:#5A687D;font-size:11px;letter-spacing:.06em;text-transform:uppercase'>"
         f"Reported by</div><ul style='margin:2px 0 6px 18px;padding:0'>{sources}</ul></div></div>")

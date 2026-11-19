@@ -43,6 +43,7 @@ python -m evaluation.evaluate                     # accuracy against the labelle
 python -m evaluation.location_eval                # location accuracy on a second labelled set
 python -m evaluation.recall_check                 # compare coverage with Bing News (evaluation only)
 python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
+python -m outbreak_monitor.lgd --download         # refresh the LGD code lists (rarely needed)
 python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
 pytest                                            # tests
 ```
@@ -247,16 +248,19 @@ Each article is placed at the most specific level it supports: state, district o
 
 Each article stores the place in its own words, the level, a confidence (high/medium/low), a review flag, and the reasons for the choice.
 
+**LGD codes.** Every place in India also gets its official code from the **Local Government Directory** (LGD, Ministry of Panchayati Raj): the state and district code, and the sub-district code when the place found is the name of exactly one sub-district of that district. The LGD lists of 36 states, 790 districts and 7,112 sub-districts are downloaded from LGD's public web service into `reference/lgd/`. All reference states and districts are matched to LGD: by name, by other spellings, by a close spelling within the state, or, for renamed districts (Aurangabad → Chhatrapati Sambhajinagar, Karimganj → Sribhumi) and places LGD keeps as sub-districts (Shahdara, Mahe, Yanam), through `config/lgd.yaml`. The codes are stored on articles and official IDSP records and shown in the article register and the map popups.
+
 ## Dashboard
 
 `streamlit run app.py` opens it at http://localhost:8501.
 
-- **Map** of India only (the official boundary; everything outside India is masked). There is one marker per story, coloured by event status, and nearby markers group together when zoomed out. Clicking a marker shows the disease, headline, location, date and links to every source that reported it. Official IDSP records appear as green squares on their own layer.
+- **Map** of India only (the official boundary; everything outside India is masked). There is one marker per story, coloured by event status, and nearby markers group together when zoomed out into a violet circle showing how many reports it holds (zoom in or click to see them). Clicking a marker shows the disease, headline, location, date and links to every source that reported it. Official IDSP records appear as green squares on their own layer.
 - **Filters** in the sidebar: disease group, disease, state, language, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
 - **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
 - **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
 - **Translated articles** show the English headline with the original headline and its language underneath, on the map, in the side panel and in the register.
 - **Article register** lists every matching article with its location, confidence, event status, language and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
+- **States × diseases** tab: how many reports each state has for each disease, as a table shaded from light (few) to dark (many), either for news reports (each story counted once, following the sidebar filters) or for the official IDSP records. Below it, a bar chart ranks the states for one chosen disease. These are counts of reports, not of cases.
 - **Not on the map** tab: articles from India that match the filters but name no state or district (national stories, or the place could not be read), with the reason. With *Relevant outbreak reports* selected, these are relevant reports that simply have no place on the map. The caption under the map says how many there are.
 - **Official reports** tab: every IDSP record with all its fields and a link to the weekly PDF.
 - **Refresh now** runs a collection straight away.
@@ -282,8 +286,8 @@ The data is stored in SQLite (`data/outbreaks.db`) through SQLAlchemy, using por
 
 | Table | What's in it |
 |---|---|
-| `articles` | headline (in English), source, URLs, publication and collection time, text (as published), language, original headline and translated sentences, disease tags and matched keywords, classification and reasons, story ID, review status, and location (country, state, district, locality, coordinates, level, confidence, review flag, reasons) |
-| `official_reports` | one row per IDSP outbreak: ID, report week and PDF link, state, district, disease (as printed and mapped), cases, deaths, dates, status, action taken, coordinates |
+| `articles` | headline (in English), source, URLs, publication and collection time, text (as published), language, original headline and translated sentences, disease tags and matched keywords, classification and reasons, story ID, review status, and location (country, state, district, locality, coordinates, LGD codes, level, confidence, review flag, reasons) |
+| `official_reports` | one row per IDSP outbreak: ID, report week and PDF link, state, district (with LGD codes), disease (as printed and mapped), cases, deaths, dates, status, action taken, coordinates |
 | `seen_links` | links checked but not stored (no keyword, too old, duplicate, failed download) |
 | `listing_status` | when each feed, sitemap or topic page was last read, and its last error |
 | `geocode_cache` | Nominatim answers, so each place is looked up only once |
@@ -300,6 +304,7 @@ To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and 
 | `config/diseases.yaml` | the IDSP conditions with their code, group, keywords, names in the 12 Indian languages and search terms; screening words per language; lookback period (45 days) and refresh interval (30 minutes) |
 | `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
 | `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
+| `config/lgd.yaml` | reference districts whose LGD name differs (renamed districts, LGD sub-districts) |
 | `config/sources.yaml` | English news sites and how to read them, plus the official report series |
 | `config/regional_sources.yaml` | Indian-language news sites, with their language |
 | `config/official_diseases.yaml` | which terms of the IDSP weekly outbreak reports map to which condition |
@@ -342,6 +347,7 @@ outbreak_monitor/
   relevance.py             relevance and event classification
   gazetteer.py, location.py  place reference data and outbreak location
   official.py              NCDC/IDSP weekly reports
+  lgd.py                   LGD codes of states, districts and sub-districts
   collector.py             one collection run; scheduler.py runs it every 30 minutes
   reprocess.py             re-applies the configuration to stored articles
   dashboard_data.py        data behind the dashboard

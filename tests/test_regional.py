@@ -107,6 +107,11 @@ def test_unknown_language_is_rejected():
     ("చికున్‌గున్యా కేసులు", ["Chikungunya"]),          # with and without zero-width non-joiner
     ("చికున్గున్యా కేసులు", ["Chikungunya"]),
     ("ਹੈਜ਼ਾ ਫੈਲਿਆ", ["Cholera"]),                           # nukta, composed or not
+    ("மர்ம காய்ச்சலால் 2 பேர் பலி", ["Fever (no diagnosis)"]),  # final virama dropped before the ending
+    ("കോവിഡിന് ശേഷം", ["COVID-19"]),
+    ("हॉस्टल में फूड पॉइजनिंग, 40 छात्र बीमार", ["Food poisoning"]),
+    ("कुत्ते के काटने के 120 मामले", ["Animal bite"]),
+    ("ಹಕ್ಕಿ ಜ್ವರ ಭೀತಿ", []),                                  # bird flu: recognised, not monitored
     ("Dengue cases rise in Pune", ["Dengue"]),
     ("anti-dengues", []),
 ])

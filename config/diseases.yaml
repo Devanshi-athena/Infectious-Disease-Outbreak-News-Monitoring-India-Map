@@ -61,6 +61,19 @@ diseases:
     category: Water- and food-borne
     keywords: ["food poisoning", "foodborne illness", "food-borne illness"]
     search_terms: ["food poisoning"]
+    native_keywords:
+      hi: ["फूड पॉइजनिंग", "फूड पॉयजनिंग", "खाद्य विषाक्तता"]
+      mr: ["अन्नातून विषबाधा", "अन्नविषबाधा", "फूड पॉयझनिंग"]
+      gu: ["ફૂડ પોઇઝનિંગ", "ફૂડ પોઈઝનિંગ"]
+      bn: ["ফুড পয়জনিং", "খাদ্যে বিষক্রিয়া"]
+      as: ["খাদ্য বিষক্ৰিয়া"]
+      te: ["ఫుడ్ పాయిజనింగ్"]
+      ta: ["உணவு நச்சு", "ஃபுட் பாய்சன்"]
+      ur: ["فوڈ پوائزننگ"]
+      kn: ["ಫುಡ್ ಪಾಯಿಸನ್", "ಆಹಾರ ವಿಷಬಾಧೆ"]
+      or: ["ଫୁଡ ପଏଜନିଂ", "ଖାଦ୍ୟ ବିଷାକ୍ତ"]
+      ml: ["ഭക്ഷ്യവിഷബാധ", "ഭക്ഷ്യ വിഷബാധ"]
+      pa: ["ਫੂਡ ਪੁਆਇਜ਼ਨਿੰਗ"]
 
   - name: Dysentery
     code: DYSENTERY
@@ -69,6 +82,13 @@ diseases:
     keywords: ["dysentery", "bloody diarrhoea", "bloody diarrhea", "bloody stools"]
     search_terms: []
     superseded_by: ["Shigellosis"]
+    native_keywords:
+      hi: ["पेचिश"]
+      bn: ["আমাশয়"]
+      as: ["আমাশয়"]
+      ur: ["پیچش"]
+      or: ["ଆମାଶୟ"]
+      pa: ["ਪੇਚਸ਼"]
 
   - name: Cholera
     code: CHOLERA
@@ -131,6 +151,19 @@ diseases:
     keywords: ["acute viral hepatitis", "viral hepatitis", "acute hepatitis"]
     search_terms: ["hepatitis"]
     superseded_by: ["Hepatitis A", "Hepatitis E"]
+    native_keywords:
+      hi: ["हेपेटाइटिस"]
+      mr: ["हिपॅटायटिस", "हेपेटायटिस"]
+      gu: ["હિપેટાઇટિસ", "હેપેટાઇટિસ"]
+      bn: ["হেপাটাইটিস"]
+      as: ["হেপাটাইটিছ"]
+      te: ["హెపటైటిస్"]
+      ta: ["ஹெபடைடிஸ்"]
+      ur: ["ہیپاٹائٹس"]
+      kn: ["ಹೆಪಟೈಟಿಸ್"]
+      or: ["ହେପାଟାଇଟିସ"]
+      ml: ["ഹെപ്പറ്റൈറ്റിസ്"]
+      pa: ["ਹੈਪੇਟਾਈਟਸ"]
 
   - name: Hepatitis A
     code: HEP_A
@@ -208,6 +241,10 @@ diseases:
     category: Vector-borne
     keywords: ["kala-azar", "kala azar", "kalaazar", "visceral leishmaniasis"]
     search_terms: []
+    native_keywords:
+      hi: ["कालाजार"]
+      bn: ["কালাজ্বর"]
+      as: ["কালাজ্বৰ"]
 
   - name: Acute Encephalitis Syndrome
     code: AES
@@ -221,7 +258,13 @@ diseases:
     superseded_by: ["Japanese Encephalitis", "West Nile Virus", "Nipah Virus Disease"]
     native_keywords:
       hi: ["दिमागी बुखार", "चांदीपुरा"]
-      gu: ["ચાંદીપુરા"]
+      mr: ["मेंदूज्वर"]
+      gu: ["ચાંદીપુરા", "મગજનો તાવ"]
+      bn: ["এনসেফেলাইটিস"]
+      ta: ["மூளைக் காய்ச்சல்"]
+      ur: ["دماغی بخار"]
+      kn: ["ಮೆದುಳು ಜ್ವರ"]
+      or: ["ମସ୍ତିଷ୍କ ଜ୍ୱର"]
       ml: ["മസ്തിഷ്ക ജ്വരം"]
 
   - name: Japanese Encephalitis
@@ -231,7 +274,13 @@ diseases:
     keywords: ["Japanese encephalitis", "JE cases", "JE deaths"]
     search_terms: ["japanese encephalitis"]
     native_keywords:
+      hi: ["जापानी इंसेफेलाइटिस", "जापानी बुखार"]
+      mr: ["जपानी मेंदूज्वर"]
+      bn: ["জাপানি এনসেফেলাইটিস"]
       as: ["জাপানীজ এনকেফেলাইটিছ"]
+      te: ["జపనీస్ ఎన్సెఫలైటిస్"]
+      or: ["ଜାପାନିଜ ଏନସେଫାଲାଇଟିସ"]
+      ml: ["ജപ്പാൻ ജ്വരം"]
 
   - name: West Nile Virus
     code: WEST_NILE
@@ -246,6 +295,15 @@ diseases:
     category: Vector-borne
     keywords: ["Zika", "Zika virus"]
     search_terms: []
+    native_keywords:
+      hi: ["जीका", "ज़ीका"]
+      mr: ["झिका"]
+      gu: ["ઝિકા"]
+      bn: ["জিকা"]
+      te: ["జికా"]
+      ta: ["ஜிகா"]
+      kn: ["ಝಿಕಾ"]
+      pa: ["ਜ਼ੀਕਾ"]
 
   - name: Yellow Fever
     code: YELLOW_FEVER
@@ -280,13 +338,14 @@ diseases:
                "influenza A", "influenza B"]
     search_terms: ["influenza", "swine flu", "h1n1", "h3n2"]
     native_keywords:   # swine flu
-      hi: ["स्वाइन फ्लू"]
+      hi: ["स्वाइन फ्लू", "इन्फ्लूएंजा", "इन्फ्लुएंजा"]
       mr: ["स्वाइन फ्लू"]
       gu: ["સ્વાઈન ફ્લૂ"]
-      bn: ["সোয়াইন ফ্লু"]
+      bn: ["সোয়াইন ফ্লু", "ইনফ্লুয়েঞ্জা"]
       te: ["స్వైన్ ఫ్లూ"]
       ta: ["பன்றிக் காய்ச்சல்", "பன்றிக்காய்ச்சல்"]
       ur: ["سوائن فلو"]
+      ml: ["ഇൻഫ്ലുവൻസ"]
       pa: ["ਸਵਾਈਨ ਫਲੂ"]
 
   - name: COVID-19
@@ -341,12 +400,35 @@ diseases:
     category: Vaccine-preventable
     keywords: ["rubella", "German measles"]
     search_terms: []
+    native_keywords:
+      hi: ["रूबेला"]
+      mr: ["रुबेला"]
+      gu: ["રૂબેલા"]
+      bn: ["রুবেলা"]
+      te: ["రుబెల్లా"]
+      ta: ["ரூபெல்லா"]
+      ur: ["روبیلا"]
+      kn: ["ರುಬೆಲ್ಲಾ"]
+      or: ["ରୁବେଲା"]
+      ml: ["റുബെല്ല"]
+      pa: ["ਰੂਬੈਲਾ"]
 
   - name: Diphtheria
     code: DIPHTHERIA
     idsp: P, L
     category: Vaccine-preventable
     keywords: ["diphtheria"]
+    native_keywords:
+      hi: ["डिप्थीरिया", "गलघोंटू"]
+      mr: ["घटसर्प", "डिप्थेरिया"]
+      gu: ["ડિપ્થેરિયા"]
+      bn: ["ডিপথেরিয়া"]
+      te: ["డిఫ్తీరియా"]
+      ta: ["டிப்தீரியா"]
+      kn: ["ಡಿಫ್ತೀರಿಯಾ"]
+      or: ["ଡିଫଥେରିଆ"]
+      ml: ["ഡിഫ്തീരിയ"]
+      pa: ["ਡਿਪਥੀਰੀਆ"]
 
   - name: Pertussis
     code: PERTUSSIS
@@ -354,12 +436,20 @@ diseases:
     category: Vaccine-preventable
     keywords: ["pertussis", "whooping cough"]
     search_terms: []
+    native_keywords:
+      mr: ["डांग्या खोकला"]
+      bn: ["হুপিং কাশি"]
+      te: ["కోరింత దగ్గు"]
+      ta: ["கக்குவான் இருமல்"]
 
   - name: Polio
     code: POLIO
     idsp: P, L
     category: Vaccine-preventable
-    keywords: ["polio", "poliomyelitis", "poliovirus"]
+    # Disease forms only: plain "polio" is almost always the routine Pulse Polio vaccination campaign (India has had
+    # no wild polio case since 2011), whose child counts would otherwise read as cases.
+    keywords: ["polio case", "polio cases", "polio outbreak", "poliomyelitis", "poliovirus", "wild poliovirus",
+               "vaccine-derived polio", "vaccine-derived poliovirus"]
     search_terms: []
 
   - name: Mumps
@@ -368,6 +458,11 @@ diseases:
     category: Vaccine-preventable
     keywords: ["mumps"]
     search_terms: []
+    native_keywords:
+      hi: ["मम्प्स"]
+      bn: ["মাম্পস"]
+      ur: ["ممپس"]
+      or: ["ମମ୍ପସ"]
 
   - name: Chickenpox
     code: CHICKENPOX
@@ -375,6 +470,19 @@ diseases:
     category: Vaccine-preventable
     keywords: ["chickenpox", "chicken pox", "varicella"]
     search_terms: []
+    native_keywords:
+      hi: ["चिकनपॉक्स", "चिकन पॉक्स"]
+      mr: ["कांजण्या", "चिकनपॉक्स"]
+      gu: ["ચિકનપોક્સ"]
+      bn: ["চিকেন পক্স"]
+      as: ["চিকেন পক্স"]
+      te: ["చికెన్ పాక్స్"]
+      ta: ["சிக்கன் பாக்ஸ்"]
+      ur: ["چکن پاکس"]
+      kn: ["ಚಿಕನ್ ಪಾಕ್ಸ್"]
+      or: ["ଚିକେନପକ୍ସ", "ଚିକେନ ପକ୍ସ"]
+      ml: ["ചിക്കൻപോക്സ്", "ചിക്കൻ പോക്സ്"]
+      pa: ["ਚਿਕਨਪੌਕਸ"]
 
   - name: Meningitis
     code: MENINGITIS
@@ -382,6 +490,10 @@ diseases:
     category: Vaccine-preventable
     keywords: ["meningitis", "meningococcal", "meningococcal meningitis", "meningococcal disease"]
     search_terms: []
+    native_keywords:
+      hi: ["मेनिनजाइटिस"]
+      bn: ["মেনিনজাইটিস"]
+      ml: ["മെനിഞ്ചൈറ്റിസ്"]
 
   # ================================================================ Zoonotic
   - name: Human Rabies
@@ -408,10 +520,12 @@ diseases:
     keywords: ["leptospirosis", "rat fever", "Weil's disease"]
     search_terms: ["leptospirosis", "rat fever"]
     native_keywords:
+      hi: ["लेप्टोस्पायरोसिस"]
       mr: ["लेप्टो"]
+      gu: ["લેપ્ટોસ્પાયરોસિસ"]
       ta: ["எலிக்காய்ச்சல்"]
       kn: ["ಇಲಿ ಜ್ವರ"]
-      ml: ["എലിപ്പനി"]
+      ml: ["എലിപ്പനി", "ലെപ്റ്റോസ്പൈറോസിസ്"]
 
   - name: Scrub Typhus
     code: SCRUB_TYPHUS
@@ -462,6 +576,15 @@ diseases:
     idsp: P, L
     category: Zoonotic
     keywords: ["anthrax"]
+    native_keywords:
+      hi: ["एंथ्रेक्स"]
+      mr: ["अँथ्रॅक्स"]
+      bn: ["অ্যানথ্রাক্স"]
+      te: ["ఆంత్రాక్స్"]
+      ta: ["ஆந்த்ராக்ஸ்"]
+      kn: ["ಆಂಥ್ರಾಕ್ಸ್"]
+      or: ["ଆନ୍ଥ୍ରାକ୍ସ"]
+      ml: ["ആന്ത്രാക്സ്"]
 
   - name: Plague
     code: PLAGUE
@@ -471,6 +594,18 @@ diseases:
     keywords: ["bubonic plague", "pneumonic plague", "septicaemic plague", "septicemic plague", "plague outbreak",
                "plague case", "plague cases"]
     search_terms: []
+    native_keywords:
+      hi: ["प्लेग"]
+      mr: ["प्लेग"]
+      gu: ["પ્લેગ"]
+      bn: ["প্লেগ"]
+      te: ["ప్లేగు"]
+      ta: ["பிளேக்"]
+      ur: ["طاعون"]
+      kn: ["ಪ್ಲೇಗ್"]
+      or: ["ପ୍ଲେଗ"]
+      ml: ["പ്ലേഗ്"]
+      pa: ["ਪਲੇਗ"]
 
   - name: Crimean-Congo Haemorrhagic Fever (CCHF)
     code: CCHF
@@ -478,6 +613,9 @@ diseases:
     category: Zoonotic
     keywords: ["Crimean-Congo haemorrhagic fever", "Crimean-Congo hemorrhagic fever", "CCHF", "Congo fever"]
     search_terms: []
+    native_keywords:
+      hi: ["कांगो बुखार"]
+      gu: ["કોંગો ફીવર"]
 
   - name: Mpox
     code: MPOX
@@ -485,6 +623,10 @@ diseases:
     category: Zoonotic
     keywords: ["mpox", "monkeypox"]
     search_terms: ["mpox"]
+    native_keywords:
+      hi: ["मंकीपॉक्स", "एमपॉक्स"]
+      bn: ["মাঙ্কিপক্স"]
+      ml: ["മങ്കിപോക്സ്"]
 
   # ================================================================ Imported / viral haemorrhagic fevers
   - name: Ebola Virus Disease
@@ -513,6 +655,19 @@ diseases:
     superseded_by: ["Dengue", "Malaria", "Chikungunya", "Enteric fever (Typhoid)", "Scrub Typhus", "Leptospirosis",
                     "Influenza", "COVID-19", "Kyasanur Forest Disease (KFD)", "Measles", "Chickenpox",
                     "Acute Encephalitis Syndrome", "Japanese Encephalitis"]
+    native_keywords:
+      hi: ["रहस्यमयी बुखार", "अज्ञात बुखार"]
+      mr: ["अज्ञात ताप"]
+      gu: ["અજાણ્યો તાવ"]
+      bn: ["অজানা জ্বর"]
+      as: ["অজ্ঞাত জ্বৰ"]
+      te: ["అంతుచిక్కని జ్వరం"]
+      ta: ["மர்ம காய்ச்சல்"]
+      ur: ["پراسرار بخار"]
+      kn: ["ನಿಗೂಢ ಜ್ವರ"]
+      or: ["ଅଜଣା ଜ୍ୱର"]
+      ml: ["അജ്ഞാത പനി"]
+      pa: ["ਰਹੱਸਮਈ ਬੁਖਾਰ"]
 
   - name: Fever with rash
     code: S_FEVER_RASH
@@ -568,6 +723,18 @@ diseases:
                "stray dog attack", "stray dog attacks", "monkey bite", "monkey bites"]
     search_terms: ["dog bite"]
     superseded_by: ["Human Rabies"]
+    native_keywords:
+      hi: ["कुत्ते के काटने", "कुत्ते ने काटा", "डॉग बाइट"]
+      mr: ["श्वानदंश"]
+      gu: ["કૂતરા કરડવા"]
+      bn: ["কুকুরের কামড়"]
+      te: ["కుక్క కాటు"]
+      ta: ["நாய்க்கடி"]
+      ur: ["کتے کے کاٹنے"]
+      kn: ["ನಾಯಿ ಕಡಿತ"]
+      or: ["କୁକୁର କାମୁଡ଼ା"]
+      ml: ["നായ കടി"]
+      pa: ["ਕੁੱਤੇ ਦੇ ਵੱਢਣ"]
 
   - name: Snake bite
     code: S_SNAKE_BITE
@@ -575,6 +742,19 @@ diseases:
     category: Syndromes (S form)
     keywords: ["snake bite", "snakebite", "snake bites", "snakebites"]
     search_terms: []
+    native_keywords:
+      hi: ["सांप के काटने", "सर्पदंश"]
+      mr: ["सर्पदंश"]
+      gu: ["સાપ કરડવા", "સર્પદંશ"]
+      bn: ["সাপের কামড়"]
+      as: ["সাপৰ দংশন"]
+      te: ["పాము కాటు"]
+      ta: ["பாம்புக்கடி"]
+      ur: ["سانپ کے کاٹنے"]
+      kn: ["ಹಾವು ಕಡಿತ"]
+      or: ["ସାପ କାମୁଡ଼ା"]
+      ml: ["പാമ്പുകടി"]
+      pa: ["ਸੱਪ ਦੇ ਡੰਗਣ"]
 
   - name: Other unusual syndrome or health condition
     code: S_UNUSUAL
@@ -587,6 +767,17 @@ diseases:
                "mystery deaths", "Guillain-Barre syndrome", "Guillain-Barré syndrome", "GBS cases",
                "hand, foot and mouth disease", "hand foot and mouth disease", "hand-foot-mouth disease"]
     search_terms: ["mysterious disease"]
+    native_keywords:
+      hi: ["रहस्यमयी बीमारी", "अज्ञात बीमारी"]
+      mr: ["अज्ञात आजार"]
+      bn: ["অজানা রোগ"]
+      te: ["అంతుచిక్కని వ్యాధి"]
+      ta: ["மர்ம நோய்"]
+      ur: ["پراسرار بیماری"]
+      kn: ["ನಿಗೂಢ ಕಾಯಿಲೆ"]
+      or: ["ଅଜଣା ରୋଗ"]
+      ml: ["അജ്ഞാത രോഗം"]
+      pa: ["ਰਹੱਸਮਈ ਬਿਮਾਰੀ"]
 
   # ================================================================ Not monitored
   - name: Bird flu in animals (not monitored)

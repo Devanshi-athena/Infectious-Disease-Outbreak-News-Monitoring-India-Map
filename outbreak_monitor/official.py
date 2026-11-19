@@ -24,6 +24,7 @@ from .config import CONFIG_DIR, _read_yaml, load_disease_config, load_official_s
 from .db import OfficialReport, get_session_factory, utcnow
 from .fetch import allowed_by_robots, get
 from .gazetteer import load_india, normalise_name
+from .location import set_lgd_codes
 from .logs import setup_logging
 
 log = logging.getLogger(__name__)
@@ -373,6 +374,7 @@ def collect_official(session_factory=None) -> dict:
         with session_factory() as session:  # the mapping may have changed: map every stored record again
             for row in session.scalars(select(OfficialReport)):
                 row.diseases = disease_map.diseases(row.disease_raw)
+                set_lgd_codes(row, "India", row.state, row.district if row.location_level == "district" else None)
             session.commit()
     return stats
 

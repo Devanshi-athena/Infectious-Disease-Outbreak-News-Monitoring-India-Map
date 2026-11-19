@@ -1,5 +1,6 @@
 """Load the YAML configuration files (news sources, diseases and settings)."""
 
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,7 +56,13 @@ def native_pattern(word: str) -> str:
     words (Bengali "হাম" in "হামলা", "নিপা=" not in "নিপাত")."""
     exact = word.strip().endswith("=")
     word = " ".join(word.strip().rstrip("=").split())
-    return word if exact or len(word.replace(" ", "")) <= SHORT_NATIVE_KEYWORD else word + "*"
+    if exact or len(word.replace(" ", "")) <= SHORT_NATIVE_KEYWORD:
+        return word
+    # A final virama (vowel-killer sign) is dropped when an ending is attached: Tamil காய்ச்சல் + ஆல் ->
+    # காய்ச்சலால், Malayalam കോവിഡ് -> കോവിഡിന്. Without it, the word is a prefix of all its forms.
+    while word and unicodedata.name(word[-1], "").endswith("SIGN VIRAMA"):
+        word = word[:-1]
+    return word + "*"
 
 
 @dataclass

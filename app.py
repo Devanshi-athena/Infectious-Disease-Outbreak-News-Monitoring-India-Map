@@ -5,9 +5,11 @@
 
 import base64
 import html
+import math
 from datetime import timedelta
 from pathlib import Path
 
+import altair as alt
 import folium
 import streamlit as st
 from folium.plugins import Fullscreen, MarkerCluster
@@ -16,15 +18,17 @@ from streamlit_folium import st_folium
 from outbreak_monitor.config import load_disease_config
 from outbreak_monitor.dashboard_data import (EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, REVIEW_OPTIONS, VIEWS,
                                              Filters, apply_filters, district_zoom_options, filter_official,
-                                             latest_reports, load_articles, load_official, not_on_map,
-                                             official_popup_html, options, reports_by_state, save_reviews,
-                                             story_markers, summary, to_ist)
+                                             latest_reports, lgd_label, load_articles, load_official, not_on_map,
+                                             official_popup_html, official_state_disease_table, options,
+                                             reports_by_state, save_reviews, state_disease_table, story_markers,
+                                             summary, to_ist)
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
 
 INDIA_BOUNDS = [[6.5, 68.0], [37.2, 97.5]]
 PAN_LIMITS = [[3.0, 63.0], [40.0, 102.0]]   # keep the view on India
 MAP_BACKGROUND = "#EEF2F7"                   # colour outside India's boundary
+CLUSTER_COLOUR = "#6D28D9"                   # groups of news reports: violet, unlike any single-report colour
 LOGO = Path(__file__).parent / "assets" / "aplyd_logo.png"
 st.set_page_config(page_title="Outbreak News Monitor · India", page_icon="🩺", layout="wide")
 factory = get_session_factory()
@@ -289,8 +293,8 @@ with map_col:
                       max_bounds=True, min_lat=PAN_LIMITS[0][0], max_lat=PAN_LIMITS[1][0],
                       min_lon=PAN_LIMITS[0][1], max_lon=PAN_LIMITS[1][1],
                       zoomSnap=0.25, zoomDelta=0.5)  # fractional zoom so India fills the frame
-    # Free tiles, no API key: a light base map by default, the full-colour OpenStreetMap as an option.
-    folium.TileLayer("CartoDB positron", name="Light").add_to(fmap)
+    # Free tiles without an API key: OpenStreetMap (light use only, see its tile usage policy). CARTO's light map
+    # now shows only "API KEY REQUIRED" without a key, so it is not used.
     folium.TileLayer("OpenStreetMap", name="Street map").add_to(fmap)
     fmap.get_root().header.add_child(folium.Element(
         f"<style>.leaflet-container {{ background: {MAP_BACKGROUND}; font-family: Inter, 'Segoe UI', Arial, sans-serif; }}"
@@ -315,9 +319,9 @@ with map_col:
             var size = n < 10 ? 32 : (n < 50 ? 40 : 48);
             return L.divIcon({
               html: '<div style="width:' + size + 'px;height:' + size + 'px;line-height:' + size + 'px;'
-                  + 'border-radius:50%;background:#1554A6;color:#fff;text-align:center;'
+                  + 'border-radius:50%;background:""" + CLUSTER_COLOUR + """;color:#fff;text-align:center;'
                   + 'font:600 13px Inter,Segoe UI,Arial,sans-serif;'
-                  + 'box-shadow:0 0 0 5px rgba(21,84,166,.22),0 2px 6px rgba(0,0,0,.25)">'
+                  + 'box-shadow:0 0 0 5px rgba(109,40,217,.22),0 2px 6px rgba(0,0,0,.25)">'
                   + n + '</div>',
               className: '', iconSize: L.point(size, size)
             });
@@ -355,6 +359,12 @@ with map_col:
         'color:#172033;box-shadow:0 4px 14px rgba(16,24,40,.12)"><div style="font-weight:700;font-size:11px;'
         f'letter-spacing:.08em;text-transform:uppercase;color:#5A687D;margin-bottom:4px">News reports</div>{legend}'
         '<div style="margin:8px 0 2px 0;border-top:1px solid #E2E8F0;padding-top:7px;display:flex;align-items:center">'
+        f'<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;'
+        f'border-radius:50%;background:{CLUSTER_COLOUR};color:#fff;font-size:10px;font-weight:600;margin-right:6px">'
+        '12</span>Group of news reports</div>'
+        '<div style="margin:0 0 4px 26px;color:#5A687D;font-size:11px;max-width:170px">The number is how many reports; '
+        'zoom in or click to see them</div>'
+        '<div style="margin:8px 0 2px 0;border-top:1px solid #E2E8F0;padding-top:7px;display:flex;align-items:center">'
         f'<span style="display:inline-block;width:11px;height:11px;background:{OFFICIAL_COLOUR};border:2px solid #fff;'
         'border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.15);margin-right:8px"></span>Official report (IDSP)</div>'
         '</div>'))
@@ -371,9 +381,11 @@ with map_col:
         fmap.fit_bounds(INDIA_BOUNDS)
 
     st_folium(fmap, height=720, use_container_width=True, returned_objects=[], key="map")
-    st.caption("Circles: news stories (one per story; the same report from several publishers is listed in one "
-               "popup), at the most specific place the article supports. Green squares: official IDSP outbreak "
-               "records, at the district centre."
+    st.caption("Small dots: news stories (one per story; the same report from several publishers is listed in one "
+               "popup), at the most specific place the article supports, coloured by event status. Violet circles "
+               "with a number: several news stories close together at this zoom level; the number is how many, and "
+               "zooming in or clicking shows them. Green squares: official IDSP outbreak records, at the district "
+               "centre."
                + (f" **{len(unmapped)} matching article(s) from India name no state or district and are not on the "
                   "map**; they are listed in the *Not on the map* tab below." if not unmapped.empty else ""))
 
@@ -407,11 +419,68 @@ with side_col:
                     'regions and outlets.</div></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- register + about
-register_tab, unmapped_tab, official_tab, about_tab = st.tabs([
+register_tab, states_tab, unmapped_tab, official_tab, about_tab = st.tabs([
     f":material/table_rows: Article register ({len(matching)})",
+    ":material/grid_on: States × diseases",
     f":material/location_off: Not on the map ({len(unmapped)})",
     f":material/verified: Official reports ({len(official_matching)})",
     ":material/info: About the data"])
+
+# Sequential blue ramp (light = few, dark = many); text switches to white on the two darkest steps.
+HEAT_STEPS = ["#cde2fb", "#9ec5f4", "#5598e7", "#256abf", "#104281"]
+
+
+def heat_style(value, top: int) -> str:
+    """Cell colour on a log scale (one state's dengue count can be 100x the others), blank for zero."""
+    if not value:
+        return "color: transparent"
+    step = min(len(HEAT_STEPS) - 1, int(len(HEAT_STEPS) * math.log1p(value) / math.log1p(max(top, 1)) - 1e-9))
+    return f"background-color: {HEAT_STEPS[step]}; color: {'#FFFFFF' if step >= 3 else '#172033'}"
+
+
+with states_tab:
+    disease_order = [d.name for d in disease_config.monitored]
+    measure = st.radio("Count", ["News reports", "Official IDSP records"], horizontal=True,
+                       label_visibility="collapsed",
+                       help="News reports count each story once (the same report from several publishers is one "
+                            "report). Official records are outbreaks in the IDSP weekly reports.")
+    if measure == "News reports":
+        table = state_disease_table(matching, disease_order)
+        st.caption("Number of news reports per state and disease, for the articles matching the view and filters in "
+                   "the sidebar. Only reports placed in a state are counted (see *Not on the map* for the others). "
+                   "This measures news coverage, not the number of cases.")
+    else:
+        table = official_state_disease_table(official_matching, disease_order)
+        st.caption("Number of outbreaks in the IDSP weekly reports per state and disease, for the disease and state "
+                   "filters in the sidebar (the publication-date filter does not apply).")
+    if table.empty:
+        st.info("No reports match the current filters.")
+    else:
+        top = int(table.drop(columns="Total").to_numpy().max())
+        styled = (table.style
+                  .map(lambda v: heat_style(v, top), subset=[c for c in table.columns if c != "Total"])
+                  .map(lambda _: "font-weight: 600", subset=["Total"]))
+        st.dataframe(styled, width="stretch", height=min(38 * len(table) + 40, 560))
+        legend = "".join(f'<span style="display:inline-block;width:22px;height:12px;background:{c};'
+                         f'margin-right:2px;border-radius:2px"></span>' for c in HEAT_STEPS)
+        st.markdown(f'<div class="caveat">Fewer {legend} more reports (shading on a log scale; empty cells: none).'
+                    '</div>', unsafe_allow_html=True)
+
+        st.markdown("#### States with the most reports of one disease")
+        ranked_diseases = [d for d in table.columns if d != "Total"]
+        chosen = st.selectbox("Disease", ranked_diseases, label_visibility="collapsed",
+                              index=ranked_diseases.index(max(ranked_diseases, key=lambda d: table[d].sum())))
+        ranking = table[chosen][table[chosen] > 0].sort_values(ascending=False).rename("reports").reset_index()
+        chart = (alt.Chart(ranking)
+                 .mark_bar(color="#2a78d6", cornerRadiusEnd=4, size=14)
+                 .encode(x=alt.X("reports:Q", title="Reports", axis=alt.Axis(grid=True, gridColor="#E2E8F0",
+                                                                               tickMinStep=1, format="d")),
+                         y=alt.Y("State / UT:N", sort="-x", title=None),
+                         tooltip=[alt.Tooltip("State / UT:N", title="State / UT"),
+                                  alt.Tooltip("reports:Q", title=f"{chosen} reports")])
+                 .properties(height=max(120, 24 * len(ranking))))
+        labels = chart.mark_text(align="left", dx=4, color="#5A687D", fontSize=11).encode(text="reports:Q")
+        st.altair_chart((chart + labels).configure_view(stroke=None), width="stretch")
 
 with unmapped_tab:
     if unmapped.empty:
@@ -455,9 +524,10 @@ with register_tab:
             location_confidence=matching["location_confidence"].map(
                 lambda v: v if isinstance(v, str) and v != "none" else "—"),
             headline_original=matching["headline_original"].map(lambda v: v if isinstance(v, str) else ""),
-        )[["article_id", "published", "headline", "headline_original", "diseases_text", "place", "location_level",
-           "location_confidence", "review_flag", "event_label", "content_type", "source_name", "language_name",
-           "article_url", "relevance", "relevance_status"]]
+            lgd=[lgd_label(r) for r in matching.itertuples()],
+        )[["article_id", "published", "headline", "headline_original", "diseases_text", "place", "lgd",
+           "location_level", "location_confidence", "review_flag", "event_label", "content_type", "source_name",
+           "language_name", "article_url", "relevance", "relevance_status"]]
         edited = st.data_editor(
             table, hide_index=True, width="stretch", height=460, key="articles",
             disabled=[c for c in table.columns if c != "relevance_status"],
@@ -470,6 +540,8 @@ with register_tab:
                                                                  help="As published, for translated articles"),
                 "diseases_text": "Disease",
                 "place": "Reported location",
+                "lgd": st.column_config.TextColumn("LGD code", help="Local Government Directory codes: state / "
+                                                   "district / sub-district (where identified)"),
                 "location_level": "Level",
                 "location_confidence": "Location confidence",
                 "review_flag": st.column_config.TextColumn("Check", help="Location flagged for review"),
@@ -549,7 +621,7 @@ as their own layer, so they can be compared with the news reports.
 **Limits.** Classification and location are automatic and can be wrong; uncertain locations are flagged for review.
 Coverage depends on what the configured outlets publish.
 
-**Data and attribution.** Map tiles © OpenStreetMap contributors, © CARTO. India's boundary: official boundary of
+**Data and attribution.** Map tiles © OpenStreetMap contributors. India's boundary: official boundary of
 India as per the Survey of India, compiled by the DataMeet India community (CC0). Place data © GeoNames (CC BY 4.0).
 Geocoding © OpenStreetMap contributors (ODbL), via Nominatim. Translation: IndicTrans2 by AI4Bharat (MIT licence).
 Articles © their publishers; follow the links to read the originals.

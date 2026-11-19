@@ -1,0 +1,36 @@
+# Reference place names (GeoNames, reference/india_places.csv) whose LGD name differs too much to be matched
+# automatically. LGD codes come from the Local Government Directory (reference/lgd/, downloaded with
+# python -m outbreak_monitor.lgd --download). All other names are matched by name, by the reference data's
+# other spellings, or by a close spelling within the same state.
+
+states:
+  Dadra and Nagar Haveli and Daman and Diu: The Dadra And Nagar Haveli And Daman And Diu
+
+# "State|Reference district": LGD district, or {district, subdistrict} where LGD holds the place as a
+# sub-district of another district.
+districts:
+  Andhra Pradesh|Anantapur: Ananthapuramu
+  Andhra Pradesh|Konaseema: Dr. B.R. Ambedkar Konaseema
+  Andhra Pradesh|YSR: Y.S.R. Kadapa
+  Assam|Karimganj: Sribhumi                                   # renamed 2024
+  Chhattisgarh|Baloda Bazar: Balodabazar-Bhatapara
+  Chhattisgarh|Balrampur: Balrampur-Ramanujganj
+  Dadra and Nagar Haveli and Daman and Diu|Dadra & Nagar Haveli: Dadra And Nagar Haveli
+  Dadra and Nagar Haveli and Daman and Diu|Daman: Daman
+  Dadra and Nagar Haveli and Daman and Diu|Diu: Diu
+  Delhi|Shahdara: {district: North East, subdistrict: Shahdara}
+  Karnataka|Ramanagara: Bengaluru South                       # renamed 2025
+  Lakshadweep|Lakshadweep: Lakshadweep District
+  Madhya Pradesh|Khandwa: Khandwa (East Nimar)
+  Maharashtra|Ahmadnagar: Ahilyanagar                          # renamed 2024
+  Maharashtra|Aurangabad: Chhatrapati Sambhajinagar            # renamed 2023
+  Maharashtra|Osmanabad: Dharashiv                             # renamed 2023
+  Mizoram|Saiha: Siaha
+  Odisha|Angul: Anugola                                        # LGD uses the Odia spelling
+  Odisha|Baragarh: Baragada
+  Odisha|Cuttack: Kataka
+  Odisha|Debagarh: Debagada
+  Odisha|Nayagarh: Nayagada
+  Odisha|Sundargarh: Sundaragada
+  Puducherry|Mahe: {district: Puducherry, subdistrict: Mahe}
+  Puducherry|Yanam: {district: Puducherry, subdistrict: Yanam}
