@@ -16,12 +16,13 @@ from folium.plugins import Fullscreen, MarkerCluster
 from streamlit_folium import st_folium
 
 from outbreak_monitor.config import load_disease_config
-from outbreak_monitor.dashboard_data import (EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, REVIEW_OPTIONS, VIEWS,
+from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVENT_LABELS, FIRST_REPORT_WEEKS,
+                                             OFFICIAL_COLOUR, REVIEW_OPTIONS, RISE_FACTOR, RISE_MIN_REPORTS, VIEWS,
                                              Filters, apply_filters, district_zoom_options, filter_official,
                                              latest_reports, lgd_label, load_articles, load_official, not_on_map,
                                              official_popup_html, official_state_disease_table, options,
                                              reports_by_state, save_reviews, state_disease_table, story_markers,
-                                             summary, to_ist)
+                                             outbreak_alerts, outbreak_events, summary, to_ist, event_text)
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
 
@@ -419,7 +420,11 @@ with side_col:
                     'regions and outlets.</div></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- register + about
-register_tab, states_tab, unmapped_tab, official_tab, about_tab = st.tabs([
+alerts = outbreak_alerts(apply_filters(articles, Filters(diseases=diseases, states=states)))
+events = outbreak_events(matching)
+alerts_tab, events_tab, register_tab, states_tab, unmapped_tab, official_tab, about_tab = st.tabs([
+    f":material/notifications_active: Alerts ({len(alerts)})",
+    f":material/hub: Outbreaks ({len(events)})",
     f":material/table_rows: Article register ({len(matching)})",
     ":material/grid_on: States × diseases",
     f":material/location_off: Not on the map ({len(unmapped)})",
@@ -437,6 +442,86 @@ def heat_style(value, top: int) -> str:
     step = min(len(HEAT_STEPS) - 1, int(len(HEAT_STEPS) * math.log1p(value) / math.log1p(max(top, 1)) - 1e-9))
     return f"background-color: {HEAT_STEPS[step]}; color: {'#FFFFFF' if step >= 3 else '#172033'}"
 
+
+ALERT_TINTS = {"Rise": "background-color: #FDE8E8; color: #9B1C1C; font-weight: 600",
+               "First report": "background-color: #FEF3C7; color: #92400E; font-weight: 600"}
+CONTENT_TYPES = {"outbreak_report": "Outbreak report", "public_health_response": "Response / preparedness",
+                 "research": "Research", "awareness": "Awareness", "passing_mention": "Passing mention",
+                 "other": "Other", "no_keyword": "No disease keyword"}
+LINK = st.column_config.LinkColumn("Original", display_text="open ↗", width="small")
+LGD_COLUMN = st.column_config.TextColumn("LGD code", width="small",
+                                         help="Local Government Directory: state / district")
+
+
+def day(d, pattern="%d %b %Y") -> str:
+    return f"{d:{pattern}}" if d == d and d is not None else ""
+
+
+with alerts_tab:
+    if alerts.empty:
+        st.info("No alerts for the selected diseases and states.")
+    else:
+        rises = int((alerts["alert"] == "Rise").sum())
+        st.caption(f"News reports of cases in the 7 days up to **{day(alerts['as_of'].iloc[0])}** (the latest "
+                   f"report), compared with the weeks before. **Rise** ({rises}): at least {RISE_MIN_REPORTS} reports "
+                   f"and at least {RISE_FACTOR:g}× the weekly average of the {BASELINE_WEEKS} weeks before. **First "
+                   f"report** ({len(alerts) - rises}): the disease is reported in a district where it was not in "
+                   f"the {FIRST_REPORT_WEEKS} weeks before. A report seen at several publishers counts once; "
+                   "preparedness and response news and past outbreaks are not counted. Follows the disease and "
+                   "state filters, not the date filter. Alerts point to news coverage, to be checked against "
+                   "official data, not confirmed outbreaks.")
+        shown = alerts.assign(latest=alerts["latest"].map(day), lgd=[lgd_label(r) for r in alerts.itertuples()])[
+            ["alert", "disease", "place", "reports", "weekly_average_before", "latest", "headline", "lgd",
+             "article_url"]]
+        st.dataframe(
+            shown.style.map(lambda v: ALERT_TINTS.get(v, ""), subset=["alert"]),
+            hide_index=True, width="stretch", height=min(35 * len(shown) + 38, 520),
+            column_config={
+                "alert": st.column_config.TextColumn("Alert", width=110),
+                "disease": st.column_config.TextColumn("Disease", width="medium"),
+                "place": st.column_config.TextColumn("Place", width="medium"),
+                "reports": st.column_config.NumberColumn("Reports, 7 days", format="%d", width=110,
+                                                         help="Each story once, however many publishers carried it"),
+                "weekly_average_before": st.column_config.NumberColumn(
+                    "Weekly avg. before", format="%.1f", width=150,
+                    help=f"Average reports per week in the {BASELINE_WEEKS} weeks before"),
+                "latest": st.column_config.TextColumn("Latest report", width=110),
+                "headline": st.column_config.TextColumn("Latest headline", width="large"),
+                "lgd": LGD_COLUMN, "article_url": LINK,
+            })
+
+with events_tab:
+    if events.empty:
+        st.info("No outbreaks match the current filters.")
+    else:
+        st.caption("Relevant reports of the **same disease in the same place in the same week** (Monday to Sunday) "
+                   "are grouped as one outbreak, whatever the source or language. The place is the district, or "
+                   "the state when a report names no district. Newest week first, most reported first. Follows "
+                   "all filters in the sidebar.")
+        shown = events.assign(
+            week=events["week"].map(day),
+            dates=[day(a, "%d %b") if a == b else f"{day(a, '%d %b')} – {day(b, '%d %b')}"
+                   for a, b in zip(events["first_seen"], events["last_seen"])],
+            event_label=events["event_status"].map(event_text),
+            lgd=[lgd_label(r) for r in events.itertuples()])[
+            ["week", "disease", "place", "reports", "sources", "languages", "dates", "event_label", "headline", "lgd",
+             "article_url"]]
+        st.dataframe(
+            shown.style.map(lambda v: "font-weight: 700" if v > 1 else "color: #64748B", subset=["reports"]),
+            hide_index=True, width="stretch", height=480,
+            column_config={
+                "week": st.column_config.TextColumn("Week of", width=105),
+                "disease": st.column_config.TextColumn("Disease", width="medium"),
+                "place": st.column_config.TextColumn("Place", width="medium"),
+                "reports": st.column_config.NumberColumn("Reports", format="%d", width=75,
+                                                         help="Each story once, however many publishers carried it"),
+                "sources": st.column_config.NumberColumn("Sources", format="%d", width=75),
+                "languages": st.column_config.TextColumn("Languages", width=150),
+                "dates": st.column_config.TextColumn("Reported", width=125),
+                "event_label": st.column_config.TextColumn("Event", width=125),
+                "headline": st.column_config.TextColumn("First headline", width="large"),
+                "lgd": LGD_COLUMN, "article_url": LINK,
+            })
 
 with states_tab:
     disease_order = [d.name for d in disease_config.monitored]
@@ -495,9 +580,9 @@ with unmapped_tab:
                 published=[fmt_ist(to_ist(t.to_pydatetime()), "%d %b %Y %H:%M") if t == t else ""
                            for t in unmapped["published_at"]],
                 diseases_text=unmapped["diseases"].map(", ".join),
-                event_label=unmapped["event_status"].map(lambda s: EVENT_LABELS.get(s, "—")),
+                event_label=unmapped["event_status"].map(event_text),
                 headline_original=unmapped["headline_original"].map(lambda v: v if isinstance(v, str) else ""),
-            )[["published", "headline", "headline_original", "diseases_text", "event_label", "why_unmapped",
+            )[["published", "diseases_text", "event_label", "headline", "headline_original", "why_unmapped",
                "source_name", "language_name", "article_url"]],
             hide_index=True, width="stretch", height=420,
             column_config={
@@ -519,15 +604,16 @@ with register_tab:
                        for t in matching["published_at"]],
             diseases_text=matching["diseases"].map(", ".join),
             review_flag=matching["location_review"].map(lambda v: "⚠️" if v else ""),
-            event_label=matching["event_status"].map(lambda s: EVENT_LABELS.get(s, "—")),
+            event_label=matching["event_status"].map(event_text),
+            content_type=matching["content_type"].map(lambda v: CONTENT_TYPES.get(v, "—")),
             location_level=matching["location_level"].map(lambda v: v if isinstance(v, str) and v != "country" else "—"),
             location_confidence=matching["location_confidence"].map(
                 lambda v: v if isinstance(v, str) and v != "none" else "—"),
             headline_original=matching["headline_original"].map(lambda v: v if isinstance(v, str) else ""),
             lgd=[lgd_label(r) for r in matching.itertuples()],
-        )[["article_id", "published", "headline", "headline_original", "diseases_text", "place", "lgd",
-           "location_level", "location_confidence", "review_flag", "event_label", "content_type", "source_name",
-           "language_name", "article_url", "relevance", "relevance_status"]]
+        )[["article_id", "published", "diseases_text", "place", "event_label", "headline", "headline_original",
+           "source_name", "language_name", "article_url", "lgd", "location_level", "location_confidence",
+           "review_flag", "content_type", "relevance", "relevance_status"]]
         edited = st.data_editor(
             table, hide_index=True, width="stretch", height=460, key="articles",
             disabled=[c for c in table.columns if c != "relevance_status"],
@@ -541,7 +627,7 @@ with register_tab:
                 "diseases_text": "Disease",
                 "place": "Reported location",
                 "lgd": st.column_config.TextColumn("LGD code", help="Local Government Directory codes: state / "
-                                                   "district / sub-district (where identified)"),
+                                                   "district / sub-district / village (where identified)"),
                 "location_level": "Level",
                 "location_confidence": "Location confidence",
                 "review_flag": st.column_config.TextColumn("Check", help="Location flagged for review"),

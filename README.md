@@ -45,6 +45,7 @@ python -m evaluation.recall_check                 # compare coverage with Bing N
 python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
 python -m outbreak_monitor.lgd --download         # refresh the LGD code lists (rarely needed)
 python -m outbreak_monitor.lgd --new-districts    # add LGD districts missing from GeoNames, located with Nominatim
+python -m outbreak_monitor.lgd --villages         # download the LGD village list (about 1 hour, resumable)
 python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
 pytest                                            # tests
 ```
@@ -251,7 +252,12 @@ Each article is placed at the most specific level it supports: state, district o
 
 Each article stores the place in its own words, the level, a confidence (high/medium/low), a review flag, and the reasons for the choice.
 
-**LGD codes.** Every place in India also gets its official code from the **Local Government Directory** (LGD, Ministry of Panchayati Raj): the state and district code, and the sub-district code when the place found is the name of exactly one sub-district of that district. The LGD lists of 36 states, 790 districts and 7,112 sub-districts are downloaded from LGD's public web service into `reference/lgd/`. All reference states and districts are matched to LGD: by name, by other spellings, by a close spelling within the state, or, for renamed districts (Aurangabad → Chhatrapati Sambhajinagar, Karimganj → Sribhumi) and places LGD keeps as sub-districts (Shahdara, Mahe, Yanam), through `config/lgd.yaml`. The codes are stored on articles and official IDSP records and shown in the article register and the map popups.
+**LGD codes.** Every place in India also gets its official code from the **Local Government Directory** (LGD, Ministry of Panchayati Raj): the state and district code, and the sub-district code when the place found is the name of exactly one sub-district of that district. The LGD lists of 36 states, 790 districts and 7,112 sub-districts are downloaded from LGD's public web service into `reference/lgd/`. All reference states and districts are matched to LGD: by name, by other spellings, by a close spelling within the state, or, for renamed districts (Aurangabad → Chhatrapati Sambhajinagar, Karimganj → Sribhumi) and places LGD keeps as sub-districts (Shahdara, Mahe, Yanam), through `config/lgd.yaml`. LGD's 677,660 villages are kept in `reference/lgd/villages.csv.gz`. A locality gets a village code only when all of these hold, so that no village code is guessed:
+- it is not a town or city in the reference data, nor the district itself;
+- exactly one village of the district has that name;
+- its address from OpenStreetMap names the same sub-district (tahsil, mandal, taluk) as that LGD village.
+
+LGD still lists many city areas as villages (Hadapsar in Pune), and the same village name often occurs in a neighbouring district, so most localities in the news get no village code. The codes are stored on articles and official IDSP records and shown in the article register and the map popups.
 
 ## Dashboard
 
@@ -262,6 +268,8 @@ Each article stores the place in its own words, the level, a confidence (high/me
 - **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
 - **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
 - **Translated articles** show the English headline with the original headline and its language underneath, on the map, in the side panel and in the register.
+- **Alerts** compare the 7 days up to the latest report with the weeks before, for each disease and place (district, or the state when no district is named). **Rise**: at least 3 reports and at least twice the weekly average of the 4 weeks before. **First report**: the disease is reported in a district where it was not in the 8 weeks before. Only news reports of cases count (a new or suspected outbreak), each story once; preparedness news ("state on alert over Ebola"), fogging drives and past outbreaks don't. Alerts follow the disease and state filters, not the date filter. They point to news coverage to be checked against official data, not to confirmed outbreaks.
+- **Outbreaks** groups the relevant reports of the same disease, in the same place and calendar week, as one outbreak, whatever the source or language, with the number of reports, sources and languages and the first headline.
 - **Article register** lists every matching article with its location, confidence, event status, language and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
 - **States × diseases** tab: how many reports each state has for each disease, as a table shaded from light (few) to dark (many), either for news reports (each story counted once, following the sidebar filters) or for the official IDSP records. Below it, a bar chart ranks the states for one chosen disease. These are counts of reports, not of cases.
 - **Not on the map** tab: articles from India that match the filters but name no state or district (national stories, or the place could not be read), with the reason. With *Relevant outbreak reports* selected, these are relevant reports that simply have no place on the map. The caption under the map says how many there are.

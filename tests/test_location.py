@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from outbreak_monitor.db import GeocodeCache, get_session_factory
 from outbreak_monitor.gazetteer import display_name, normalise_name
 from outbreak_monitor.location import LocationResolver, NominatimGeocoder

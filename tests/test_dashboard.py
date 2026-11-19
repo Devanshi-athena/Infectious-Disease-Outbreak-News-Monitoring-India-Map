@@ -184,3 +184,48 @@ def test_state_disease_table_counts_each_story_once(factory):
     assert table.loc["Maharashtra"].tolist() == [2, 2, 0]
     # Kerala: report 3 (measles) and report 8 (dengue + measles): 2 reports in total, not 3
     assert table.loc["Kerala"].tolist() == [2, 1, 2]
+
+
+def _reports(rows):
+    """Minimal article rows: (story, disease, state, district, published date, language, type, status)."""
+    import pandas as pd
+    from datetime import datetime
+    out = []
+    for i, (story, disease, state, district, day, language, ctype, status) in enumerate(rows):
+        out.append(dict(article_id=i, story_id=story, diseases=[disease], state=state, district=district,
+                        country="India", effective_relevance="relevant", published_date=day,
+                        published_at=datetime.combine(day, datetime.min.time()), language_name=language,
+                        source_name=f"source {i}", headline=f"headline {i}", article_url=f"https://x/{i}",
+                        content_type=ctype, event_status=status, state_lgd_code=9, district_lgd_code=133))
+    return pd.DataFrame(out)
+
+
+def test_reports_of_one_disease_place_and_week_are_one_outbreak():
+    from datetime import date
+    from outbreak_monitor.dashboard_data import outbreak_events
+    ob = ("outbreak_report", "new")
+    df = _reports([(1, "Dengue", "Uttar Pradesh", "Budaun", date(2026, 11, 16), "Hindi", *ob),
+                   (1, "Dengue", "Uttar Pradesh", "Budaun", date(2026, 11, 17), "English", *ob),   # same story
+                   (2, "Dengue", "Uttar Pradesh", "Budaun", date(2026, 11, 18), "English", *ob),
+                   (3, "Dengue", "Uttar Pradesh", "Budaun", date(2026, 11, 9), "Hindi", *ob),      # week before
+                   (4, "Malaria", "Uttar Pradesh", "Budaun", date(2026, 11, 16), "Hindi", *ob)])
+    events = outbreak_events(df)
+    assert len(events) == 3
+    top = events.iloc[0]
+    assert (top.disease, top.place, top.reports, top.languages) == ("Dengue", "Budaun, Uttar Pradesh", 2, "Hindi, English")
+
+
+def test_alerts_rise_and_first_report():
+    from datetime import date, timedelta
+    from outbreak_monitor.dashboard_data import outbreak_alerts
+    ob, today = ("outbreak_report", "new"), date(2026, 11, 18)
+    rows = [(s, "Dengue", "Kerala", "Malappuram", today - timedelta(days=s), "English", *ob) for s in range(4)]
+    rows += [(10, "Dengue", "Kerala", "Malappuram", today - timedelta(days=20), "English", *ob)]   # 0.25 a week before
+    rows += [(20, "Cholera", "Bihar", "Patna", today, "Hindi", *ob)]                                 # first in 8 weeks
+    rows += [(30, "Malaria", "Bihar", "Gaya", today, "Hindi", *ob),
+             (31, "Malaria", "Bihar", "Gaya", today - timedelta(days=30), "Hindi", *ob)]             # seen before
+    rows += [(40 + i, "Ebola Virus Disease", "Jharkhand", None, today, "Hindi", "public_health_response", "unclear")
+             for i in range(3)]                                                                       # preparedness news
+    alerts = outbreak_alerts(_reports(rows))
+    got = {(a.alert, a.disease, a.place, a.reports) for a in alerts.itertuples()}
+    assert got == {("Rise", "Dengue", "Malappuram, Kerala", 4), ("First report", "Cholera", "Patna, Bihar", 1)}

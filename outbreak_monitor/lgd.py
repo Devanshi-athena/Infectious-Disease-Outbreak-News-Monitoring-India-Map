@@ -73,8 +73,57 @@ def download() -> dict[str, int]:
     return {"states": len(states), "districts": len(districts), "subdistricts": len(subdistricts)}
 
 
+VILLAGES_FILE = LGD_DIR / "villages.csv.gz"
+VILLAGE_FIELDS = ["village_code", "village", "subdistrict_code", "district_code", "census2011"]
+VILLAGE_WORKERS = 4    # requests at a time; each still waits a second before asking
+
+
+def download_villages() -> dict[str, int]:
+    """Download the villages of every sub-district into VILLAGES_FILE (one request per sub-district, about
+    3 hours). Progress is kept in data/lgd_villages_partial.csv, so an interrupted run continues where it
+    stopped."""
+    import gzip
+    partial = LGD_DIR.parent.parent / "data" / "lgd_villages_partial.csv"
+    partial.parent.mkdir(parents=True, exist_ok=True)
+    done = set()
+    if partial.exists():
+        with open(partial, encoding="utf-8") as f:
+            done = {r["subdistrict_code"] for r in csv.DictReader(f)}
+    from concurrent.futures import ThreadPoolExecutor
+    subdistricts = load("subdistricts")
+    todo = [sd for sd in subdistricts if sd["subdistrict_code"] not in done]
+    new_file = not partial.exists()
+    with open(partial, "a", newline="", encoding="utf-8") as f, ThreadPoolExecutor(VILLAGE_WORKERS) as pool:
+        writer = csv.DictWriter(f, fieldnames=VILLAGE_FIELDS)
+        if new_file:
+            writer.writeheader()
+        answers = pool.map(lambda sd: _post(f"villageList?subDistrictCode={sd['subdistrict_code']}"), todo)
+        for i, (sd, villages) in enumerate(zip(todo, answers), len(done) + 1):
+            # a sub-district without villages (towns only) is marked with an empty row, so it is not asked again
+            writer.writerows([dict(village_code=v["villageCode"], village=_clean(v["villageNameEnglish"]),
+                                   subdistrict_code=sd["subdistrict_code"], district_code=sd["district_code"],
+                                   census2011=_clean(v.get("census2011Code"))) for v in villages]
+                             or [dict(village_code="", village="", subdistrict_code=sd["subdistrict_code"],
+                                      district_code=sd["district_code"], census2011="")])
+            f.flush()
+            if i % 100 == 0:
+                log.info("LGD villages: %d of %d sub-districts", i, len(subdistricts))
+    with open(partial, encoding="utf-8") as f:
+        rows = [r for r in csv.DictReader(f) if r["village_code"]]
+    rows.sort(key=lambda r: int(r["village_code"]))
+    with gzip.open(VILLAGES_FILE, "wt", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=VILLAGE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    return {"villages": len(rows), "subdistricts": len(subdistricts)}
+
+
 def load(kind: str) -> list[dict]:
-    """The downloaded list: 'states', 'districts' or 'subdistricts'."""
+    """The downloaded list: 'states', 'districts', 'subdistricts' or 'villages'."""
+    if kind == "villages":
+        import gzip
+        with gzip.open(VILLAGES_FILE, "rt", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
     with open(FILES[kind], encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
@@ -101,9 +150,14 @@ class LgdCodes:
         for d in load("districts"):
             self.lgd_districts.setdefault(d["state_code"], {})[normalise_name(d["district"])] = d
         self.subdistricts: dict[str, dict[str, list[dict]]] = {}     # district code -> name -> rows
+        self.subdistrict_names = {int(sd["subdistrict_code"]): normalise_name(sd["subdistrict"])
+                                  for sd in load("subdistricts")}
         for sd in load("subdistricts"):
             self.subdistricts.setdefault(sd["district_code"], {}).setdefault(normalise_name(sd["subdistrict"]), []).append(sd)
 
+        # towns and cities of the reference data: LGD's village list still has many places that are now towns
+        # or parts of a city (Ichalkaranji, Virar), so these never get a village code
+        self.towns = {(p.state, n) for p in places if p.kind == "town" for n in (normalise_name(p.name), *p.aliases)}
         self.states: dict[str, dict] = {}                            # reference state name -> LGD state row
         for p in (p for p in places if p.kind == "state"):
             names = [(overrides.get("states") or {}).get(p.name, p.name), p.name, *p.aliases]
@@ -139,10 +193,16 @@ class LgdCodes:
             if name in display:
                 self.districts.setdefault((state, display[name]), codes)
 
-    def codes(self, state: str | None, district: str | None = None, locality: str | None = None) -> dict:
-        """{'state_lgd_code', 'district_lgd_code', 'subdistrict_lgd_code'} for reference place names (None
-        where a level is unknown or not uniquely identified)."""
-        out = dict(state_lgd_code=None, district_lgd_code=None, subdistrict_lgd_code=None)
+    def codes(self, state: str | None, district: str | None = None, locality: str | None = None,
+              address: str | None = None) -> dict:
+        """{'state_lgd_code', 'district_lgd_code', 'subdistrict_lgd_code', 'village_lgd_code'} for reference
+        place names (None where a level is unknown or not uniquely identified).
+
+        A village code is given only for a locality that is not a town, whose name belongs to exactly one
+        village of the district, and whose geocoded address (OpenStreetMap) names that village's sub-district:
+        LGD still lists many city areas as villages (Hadapsar in Pune), and a district may hold a village of
+        the same name as one in a neighbouring district (Rajpur)."""
+        out = dict(state_lgd_code=None, district_lgd_code=None, subdistrict_lgd_code=None, village_lgd_code=None)
         lgd_state = self.states.get(state) if state else None
         if not lgd_state:
             return out
@@ -156,9 +216,36 @@ class LgdCodes:
         if sub is None and locality:
             matches = self.subdistricts.get(lgd_district["district_code"], {}).get(self._norm(locality), [])
             sub = matches[0] if len(matches) == 1 else None
+            village_like = (not matches and (state, self._norm(locality)) not in self.towns
+                            and self._norm(locality) != self._norm(district))
+            if village_like:   # not a sub-district or town: a village of that name, if the district has exactly one
+                villages = self._villages().get(lgd_district["district_code"], {}).get(self._norm(locality), [])
+                if len(villages) == 1 and address and self._names_subdistrict(address, villages[0][1]):
+                    out["village_lgd_code"], out["subdistrict_lgd_code"] = villages[0]
         if sub:
             out["subdistrict_lgd_code"] = int(sub["subdistrict_code"])
         return out
+
+    def _names_subdistrict(self, address: str, subdistrict_code: int) -> bool:
+        """True if the address ('Bondari, Birsa Tahsil, Balaghat, ...') names the sub-district."""
+        name = self.subdistrict_names.get(subdistrict_code)
+        return bool(name) and f" {name} " in f" {self._norm(address)} "
+
+    _village_index: dict[str, dict[str, list[tuple[int, int]]]] | None = None
+
+    def _villages(self) -> dict[str, dict[str, list[tuple[int, int]]]]:
+        """district code -> village name -> [(village code, sub-district code)], loaded on first use
+        (empty if the village list has not been downloaded)."""
+        if self._village_index is None:
+            index: dict[str, dict[str, list[tuple[int, int]]]] = {}
+            if VILLAGES_FILE.exists():
+                import gzip
+                with gzip.open(VILLAGES_FILE, "rt", encoding="utf-8") as f:
+                    for code, name, sub, district, _ in csv.reader(f):
+                        if code.isdigit() and name:
+                            index.setdefault(district, {}).setdefault(self._norm(name), []).append((int(code), int(sub)))
+            self._village_index = index
+        return self._village_index
 
 
 def build_new_districts(user_agent: str, delay: float = 1.1) -> dict:
@@ -218,10 +305,14 @@ def main():
     parser.add_argument("--download", action="store_true", help=f"download the lists into {LGD_DIR}")
     parser.add_argument("--new-districts", action="store_true",
                         help="add the LGD districts missing from the reference places, located with Nominatim")
+    parser.add_argument("--villages", action="store_true",
+                        help="download the villages of every sub-district (about 3 hours, resumable)")
     args = parser.parse_args()
     setup_logging()
     if args.download:
         print("Downloaded:", download())
+    if args.villages:
+        print("Downloaded:", download_villages())
     if args.new_districts:
         from .config import CONFIG_DIR, _read_yaml
         geo = _read_yaml(CONFIG_DIR / "locations.yaml").get("geocoding") or {}

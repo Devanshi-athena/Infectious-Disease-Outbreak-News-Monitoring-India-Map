@@ -12,7 +12,6 @@ from outbreak_monitor.dashboard_data import (Filters, apply_filters, load_articl
                                              popup_html)
 from outbreak_monitor.db import Article, SeenLink, get_session_factory, utcnow
 from outbreak_monitor.discovery import Discovery
-from outbreak_monitor.location import LocationResolver
 from outbreak_monitor.matcher import KeywordMatcher
 from outbreak_monitor.relevance import RelevanceClassifier, load_relevance_config
 from outbreak_monitor.reprocess import reprocess

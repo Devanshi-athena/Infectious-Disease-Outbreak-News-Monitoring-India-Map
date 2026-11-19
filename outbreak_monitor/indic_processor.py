@@ -8,7 +8,6 @@ Python, so no C compiler is needed to install it. Only the Cython type declarati
 import regex as re
 from tqdm import tqdm
 from queue import Queue
-from typing import List, Dict, Union
 
 # Importing Python objects since these libraries don't offer C-extensions
 from indicnlp.tokenize import indic_tokenize, indic_detokenize

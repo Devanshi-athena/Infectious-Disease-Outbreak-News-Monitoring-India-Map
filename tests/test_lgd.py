@@ -42,3 +42,24 @@ def test_codes_are_set_for_india_only():
     assert (record.state_lgd_code, record.district_lgd_code) == (9, 133)
     set_lgd_codes(record, "Bangladesh", "Dhaka")
     assert record.state_lgd_code is None and record.district_lgd_code is None
+
+
+village_list = pytest.mark.skipif(LGD is None or not LGD._villages(), reason="LGD village list not downloaded")
+
+
+@village_list
+def test_village_code_needs_the_geocoded_subdistrict():
+    codes = LGD.codes("Madhya Pradesh", "Balaghat", "Bondari", "Bondari, Birsa Tahsil, Balaghat, Madhya Pradesh, India")
+    assert (codes["subdistrict_lgd_code"], codes["village_lgd_code"]) == (7033, 498052)
+    assert LGD.codes("Madhya Pradesh", "Balaghat", "Bondari")["village_lgd_code"] is None   # no address
+
+
+@village_list
+def test_no_village_code_for_city_areas_towns_or_another_districts_village():
+    # Hadapsar is a village in LGD but a part of Pune city
+    assert LGD.codes("Maharashtra", "Pune", "Hadapsar",
+                     "Hadapsar, Pune, Pune City Subdistrict, Pune, Maharashtra, 411001, India")["village_lgd_code"] is None
+    # LGD's Rajpur in Kanpur Nagar is not the Rajpur of Kanpur Dehat that the article meant
+    assert LGD.codes("Uttar Pradesh", "Kanpur", "Rajpur",
+                     "Rajpur, Sikandra, Kanpur Dehat, Uttar Pradesh, 209115, India")["village_lgd_code"] is None
+    assert LGD.codes("Maharashtra", "Kolhapur", "Ichalkaranji", "Ichalkaranji, Hatkanangle, Kolhapur")["village_lgd_code"] is None

@@ -16,6 +16,7 @@ REVIEW_OPTIONS = ("pending", "relevant", "irrelevant")
 # Muted classic tones; always shown together with the text label, never colour alone.
 EVENT_COLOURS = {"new": "#D64545", "suspected": "#E0870B", "historical": "#8792A2", "unclear": "#2F6FD1"}
 EVENT_LABELS = {"new": "New report", "suspected": "Suspected", "historical": "Historical", "unclear": "Unclear"}
+EVENT_DOTS = {"new": "🔴", "suspected": "🟠", "historical": "⚪", "unclear": "🔵"}   # the map's colours, in tables
 OFFICIAL_COLOUR = "#13895B"   # official surveillance records: green squares (news reports are circles)
 VIEWS = {
     "relevant": "Relevant outbreak reports",
@@ -27,13 +28,18 @@ COLUMNS = ["article_id", "headline", "source_name", "article_url", "published_at
            "disease_tags", "relevant_diseases", "relevance", "content_type", "event_status", "relevance_status",
            "country", "state", "district", "locality", "latitude", "longitude", "location_level",
            "location_text", "location_confidence", "location_review", "story_id", "language", "headline_original",
-           "state_lgd_code", "district_lgd_code", "subdistrict_lgd_code"]
+           "state_lgd_code", "district_lgd_code", "subdistrict_lgd_code", "village_lgd_code"]
+
+
+def event_text(status) -> str:
+    """'🔴 New report' for tables: the map colour as a dot, always with the label."""
+    return f"{EVENT_DOTS[status]} {EVENT_LABELS[status]}" if status in EVENT_LABELS else "—"
 
 
 def lgd_label(row) -> str:
-    """'LGD 9 / 133' (state / district, and sub-district when known), or '' without codes."""
+    """'LGD 9 / 133' (state / district, then sub-district and village when known), or '' without codes."""
     codes = [getattr(row, k, None) if not hasattr(row, "get") else row.get(k)
-             for k in ("state_lgd_code", "district_lgd_code", "subdistrict_lgd_code")]
+             for k in ("state_lgd_code", "district_lgd_code", "subdistrict_lgd_code", "village_lgd_code")]
     codes = [str(int(c)) for c in codes if c is not None and not (isinstance(c, float) and pd.isna(c))]
     return "LGD " + " / ".join(codes) if codes else ""
 
@@ -339,3 +345,91 @@ def official_popup_html(r) -> str:
         f"<div style='margin:6px 0 2px 0;color:#5A687D;font-size:12px'>ID {_esc(r.report_id)} · {_esc(r.week_label)}"
         f" · <a href=\"{_esc(r.report_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
         "style='color:#1554A6;font-weight:500'>weekly report (PDF)</a></div></div></div>")
+
+
+# ---------------------------------------------------------------- outbreaks (grouped reports) and alerts
+
+ALERT_WINDOW_DAYS = 7        # "this week": the last 7 days up to the latest report
+BASELINE_WEEKS = 4           # compared with the weekly average of the 4 weeks before
+RISE_MIN_REPORTS = 3         # a rise needs at least 3 reports this week ...
+RISE_FACTOR = 2.0            # ... and at least twice the weekly average before
+FIRST_REPORT_WEEKS = 8       # "first report": none of that disease in that place in the 8 weeks before
+
+
+def _report_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Relevant reports placed in a state of India, one row per (report, disease)."""
+    if df.empty:
+        return pd.DataFrame(columns=["disease", "state", "district"])
+    rows = df[(df["effective_relevance"] == "relevant") & (df["country"] == "India") & df["state"].notna()
+              & df["published_date"].notna()]
+    rows = rows.explode("diseases").dropna(subset=["diseases"]).rename(columns={"diseases": "disease"})
+    return rows.assign(district=rows["district"].where(rows["district"].notna(), None))
+
+
+def outbreak_events(df: pd.DataFrame) -> pd.DataFrame:
+    """Reports of the same disease in the same place (district, or the state when no district is named) in the
+    same calendar week, grouped as one outbreak, whatever the source or language. Newest first."""
+    rows = _report_rows(df)
+    if rows.empty:
+        return pd.DataFrame()
+    rows = rows.assign(week=[d - timedelta(days=d.weekday()) for d in rows["published_date"]],
+                       district_key=rows["district"].fillna(""))
+    rows = rows.sort_values("published_at")
+    events = rows.groupby(["disease", "state", "district_key", "week"], sort=False).agg(
+        reports=("story_id", "nunique"), articles=("article_id", "count"), sources=("source_name", "nunique"),
+        languages=("language_name", lambda s: ", ".join(dict.fromkeys(s))),
+        first_seen=("published_date", "min"), last_seen=("published_date", "max"),
+        headline=("headline", "first"), article_url=("article_url", "first"),
+        event_status=("event_status", lambda s: next((x for x in ("new", "suspected", "unclear", "historical")
+                                                      if x in set(s)), None)),
+        district_lgd_code=("district_lgd_code", "first"), state_lgd_code=("state_lgd_code", "first"),
+    ).reset_index()
+    events["place"] = [f"{d}, {s}" if d else f"{s} (state-wide)" for d, s in zip(events["district_key"], events["state"])]
+    return events.sort_values(["week", "reports"], ascending=[False, False], kind="stable").reset_index(drop=True)
+
+
+def outbreak_alerts(df: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame:
+    """Alerts per disease and place, for the 7 days up to `as_of` (default: the latest report):
+    'Rise': at least RISE_MIN_REPORTS reports and at least RISE_FACTOR x the weekly average of the
+    BASELINE_WEEKS before; 'First report': the disease is reported in that district and was not in the
+    FIRST_REPORT_WEEKS before. Reports count stories (one report from several publishers counts once). Only
+    reports of cases count: outbreak reports of a new or suspected event, not past (historical) outbreaks and
+    not preparedness or response news ("state on alert over Ebola", fogging drives)."""
+    rows = _report_rows(df)
+    if not rows.empty:
+        rows = rows[(rows["content_type"] == "outbreak_report") & rows["event_status"].isin(["new", "suspected"])]
+    if rows.empty:
+        return pd.DataFrame()
+    as_of = as_of or max(rows["published_date"])
+    start = as_of - timedelta(days=ALERT_WINDOW_DAYS - 1)
+    rows = rows.assign(district_key=rows["district"].fillna(""))
+    out = []
+    for (disease, state, district), g in rows.groupby(["disease", "state", "district_key"]):
+        current = g[(g["published_date"] >= start) & (g["published_date"] <= as_of)]
+        if current.empty:
+            continue
+        before = g[g["published_date"] < start]
+        baseline = before[before["published_date"] >= start - timedelta(weeks=BASELINE_WEEKS)]["story_id"].nunique()
+        recent = before[before["published_date"] >= start - timedelta(weeks=FIRST_REPORT_WEEKS)]
+        now, average = current["story_id"].nunique(), baseline / BASELINE_WEEKS
+        if now >= RISE_MIN_REPORTS and now >= RISE_FACTOR * average:
+            kind, why = "Rise", (f"{now} reports in the last 7 days; weekly average of the 4 weeks before: "
+                                 f"{average:g}")
+        elif district and recent.empty:
+            kind, why = "First report", (f"{now} report(s) in the last 7 days; none of {disease} here in the "
+                                         f"{FIRST_REPORT_WEEKS} weeks before")
+        else:
+            continue
+        latest = current.sort_values("published_at").iloc[-1]
+        out.append(dict(alert=kind, disease=disease, state=state, district=district or None,
+                        place=f"{district}, {state}" if district else f"{state} (state-wide)",
+                        reports=now, weekly_average_before=round(average, 2), why=why,
+                        latest=latest["published_date"], headline=latest["headline"],
+                        article_url=latest["article_url"], state_lgd_code=latest["state_lgd_code"],
+                        district_lgd_code=latest["district_lgd_code"] if district else None,
+                        as_of=as_of))
+    alerts = pd.DataFrame(out)
+    if alerts.empty:
+        return alerts
+    alerts["order"] = alerts["alert"].map({"Rise": 0, "First report": 1})
+    return alerts.sort_values(["order", "reports"], ascending=[True, False]).drop(columns="order").reset_index(drop=True)

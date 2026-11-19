@@ -12,7 +12,7 @@ import io
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from urllib.parse import urljoin
 
 import pdfplumber
