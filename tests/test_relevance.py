@@ -157,6 +157,17 @@ def test_disease_inference_is_strict():
     assert m.match("Avian influenza confirmed in water birds") == []
     assert m.match("Bird flu outbreak triggers alert") == []
     assert m.match("Seasonal influenza and bird flu cases rise") == ["Influenza"]
+    assert m.match("2,500 chickens died of bird flu in Nellore") == []
+    # Bird flu in people is monitored, only when a person is named
+    assert m.match("Two-year-old girl dies of bird flu in Andhra Pradesh") == ["Bird flu in humans"]
+    assert m.match("India reports first human case of H5N1") == ["Bird flu in humans"]
+    assert m.match("40,000 chickens culled; no human cases of bird flu reported") == []
+    assert m.match("Man tested positive for bird flu, says health department") == ["Bird flu in humans"]
+    # Cough syndromes (S form 2.6 / 2.7): never plain "cough"
+    assert m.match("Cough syrup deaths: firm's licence cancelled") == []
+    assert m.match("Cough and cold cases rise in the city") == ["Cough (up to 2 weeks)"]
+    assert m.match("Whooping cough cases in school") == ["Pertussis"]
+    assert m.match("H1N1 cases rise; symptoms include fever and persistent cough") == ["Influenza"]
 
 
 def test_comparison_and_past_events_are_not_outbreak_reports():

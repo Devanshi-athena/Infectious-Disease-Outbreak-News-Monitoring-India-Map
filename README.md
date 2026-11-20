@@ -11,8 +11,8 @@ Everything runs locally in Python with open-source libraries. No paid APIs or la
 1. Every 30 minutes (or when you press *Refresh now*) it reads RSS feeds, sitemaps and topic pages from 22 English and 113 Indian-language news sites and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
 2. For each article it stores the headline, source, publication date, URL and text, and records which disease keywords matched.
 3. A rule-based classifier decides whether the article reports an outbreak (or a public-health response to one), and whether the report is new, suspected or historical.
-4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline.
-5. The dashboard shows the reports on a map of India, with filters, an article list, and a column where you can mark articles relevant or irrelevant.
+4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline, and given its official LGD code.
+5. The dashboard shows the reports on a map of India, with alerts for rising or newly reported diseases, reports grouped into outbreaks, filters, an article list, and a column where you can mark articles relevant or irrelevant.
 
 Diseases, keywords and sources are all in YAML files under `config/`, so they can be changed without touching the code.
 
@@ -69,13 +69,13 @@ The list follows the **Integrated Disease Surveillance Programme (IDSP)**: the c
 |---|---|
 | Water- and food-borne | Acute Diarrhoeal Disease (incl. acute gastroenteritis), Food poisoning, Dysentery, Cholera, Shigellosis, Non-typhoidal salmonellosis, Enteric fever (Typhoid), Acute Viral Hepatitis, Hepatitis A, Hepatitis E |
 | Vector-borne | Malaria, Dengue, Chikungunya, Kala-azar, Acute Encephalitis Syndrome (incl. "brain fever", Chandipura), Japanese Encephalitis, West Nile Virus, Zika Virus Disease, Yellow Fever |
-| Respiratory | Influenza-like illness (ILI), Severe acute respiratory infection (SARI), Influenza (H1N1, H3N2, swine flu), COVID-19, MERS-CoV |
+| Respiratory | Influenza-like illness (ILI), Severe acute respiratory infection (SARI), Influenza (H1N1, H3N2, swine flu), Bird flu in humans (H5N1, H9N2), COVID-19, MERS-CoV |
 | Vaccine-preventable | Measles, Rubella, Diphtheria, Pertussis, Polio, Mumps, Chickenpox, Meningitis |
 | Zoonotic | Human Rabies, Leptospirosis ("rat fever"), Scrub Typhus, Kyasanur Forest Disease ("monkey fever"), Nipah Virus Disease, Brucellosis, Anthrax, Plague, CCHF, Mpox |
 | Imported and haemorrhagic fevers | Ebola Virus Disease, Marburg Virus Disease |
-| Syndromes (S form) | Fever (no diagnosis), Fever with rash, Fever with bleeding, Fever with altered sensorium, Jaundice (< 4 weeks), Acute Flaccid Paralysis, Animal bite, Snake bite, Other unusual syndrome or health condition |
+| Syndromes (S form) | Fever (no diagnosis), Fever with rash, Fever with bleeding, Fever with altered sensorium, Cough (up to 2 weeks), Cough (more than 2 weeks), Jaundice (< 4 weeks), Acute Flaccid Paralysis, Animal bite, Snake bite, Other unusual syndrome or health condition |
 
-Two entries are not on the IDSP forms: **Food poisoning**, the most frequent term in IDSP's own weekly outbreak reports, and **COVID-19**, kept on purpose. **Bird flu in animals** is recognised but not monitored: it is animal health, not an IDSP condition, and "avian influenza" is never counted as human influenza.
+Two entries are not on the IDSP forms: **Food poisoning**, the most frequent term in IDSP's own weekly outbreak reports, and **COVID-19**, kept on purpose. **Bird flu** is counted only when the text names a person ("first human case of H5N1", "girl dies of bird flu"); bird flu in poultry and wild birds is animal health, not an IDSP condition, and is recognised but not monitored. Plain "cough" is never used, since it mostly appears in cough-syrup news; only phrases such as "cough and cold cases" or "cases of persistent cough" count.
 
 Words like "outbreak", "surge in cases", "cluster", "suspected cases" or "deaths" are not used to collect articles. They only help decide whether an article that already names a disease is reporting an outbreak.
 
@@ -284,10 +284,10 @@ The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 arti
 
 | | Result |
 |---|---|
-| Relevance: precision / recall / F1 | 95% / 95% / 0.95 |
+| Relevance: precision / recall / F1 | 95% / 98% / 0.97 |
 | Event status | 95% |
-| Disease (at least one correct / all correct) | 100% / 84% |
-| State / district | 97% / 83% |
+| Disease (at least one correct / all correct) | 98% / 82% |
+| State / district | 96% / 81% |
 
 Concrete disease-control actions (a dengue ward, fines for mosquito breeding, an anti-rabies drive) count as relevant even without case numbers. A second set of 60 articles, labelled for location only, gives 95% for state and 92% for district. The report lists every disagreement.
 
@@ -339,9 +339,10 @@ Third-party data and services:
 |---|---|---|
 | [GeoNames](https://www.geonames.org) | place reference data | CC BY 4.0 |
 | [DataMeet India maps](https://github.com/datameet/maps/tree/master/Country) | India's official boundary on the map | CC0 |
-| [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
+| [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages and the newest districts | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
 | [OpenStreetMap tiles](https://operations.osmfoundation.org/policies/tiles/) | base map | light use only; switch to a tile provider for heavier or public use (one line in `app.py`) |
 | [NCDC](https://ncdc.mohfw.gov.in/) | official outbreak reports | reuse with acknowledgement |
+| [Local Government Directory](https://lgdirectory.gov.in) (Ministry of Panchayati Raj) | official codes of states, districts, sub-districts and villages | public government directory, read through its web service |
 | [IndicTrans2](https://github.com/AI4Bharat/IndicTrans2) (AI4Bharat) | translating Indian-language articles; `indic_processor.py` is from IndicTransToolkit | MIT |
 | Bing News RSS | coverage check in `evaluation/` only, never for collection | Microsoft terms |
 
@@ -358,13 +359,13 @@ outbreak_monitor/
   relevance.py             relevance and event classification
   gazetteer.py, location.py  place reference data and outbreak location
   official.py              NCDC/IDSP weekly reports
-  lgd.py                   LGD codes of states, districts and sub-districts
+  lgd.py                   LGD codes of states, districts, sub-districts and villages
   collector.py             one collection run; scheduler.py runs it every 30 minutes
   reprocess.py             re-applies the configuration to stored articles
   dashboard_data.py        data behind the dashboard
   export_samples.py        sample records and schema
 config/                    diseases, relevance cues, locations, sources
-reference/                 place data and India boundary
+reference/                 place data, India boundary and LGD code lists
 evaluation/                evaluation report, labels and scripts
 samples/                   example records and database schema
 tests/                     pytest tests
@@ -385,15 +386,17 @@ models/                    translation model (downloaded, not in git)
 | "Translation model not installed" in the log | Run `python -m outbreak_monitor.translate --download` (after `hf auth login`, see Quick start). Until then regional-language sources are skipped |
 | `ModuleNotFoundError` | Activate the virtual environment and run `pip install -r requirements.txt` |
 
+## Disclaimer
+
+This is a prototype that reads public news. It shows what the news reports, not confirmed outbreaks or case numbers, and every report should be checked against official IDSP data before any action is taken.
+
+Coverage depends on what the news covers. Sources are in English and 12 Indian languages; languages such as Nepali, Khasi and Mizo are not covered yet, and some smaller states and union territories (Andaman and Nicobar Islands, Dadra and Nagar Haveli and Daman and Diu, Ladakh, Lakshadweep, Meghalaya, Mizoram, Puducherry, Sikkim) have had little or no outbreak news in the period collected. A place with no reports on the map is not necessarily free of disease.
+
 ## Known limitations
 
-- The classifier is rule-based. Headlines that don't name the disease (e.g. a series of child deaths) can be missed, and borderline pieces can go either way. That's what the review column is for.
-- NDTV, The Hindu, India Today and Deccan Chronicle have no archives the collector can use, so after a long gap they only reach back as far as their feeds. Regular scheduled runs cover them fully.
-- Archive sitemaps don't include headlines, so when catching up, articles from them are found only if a keyword is in the URL or they appear on a topic page.
-- Location rules are heuristics. National stories issued from a city can pick up a state, and where a patient lives versus where they were treated isn't always clear. Uncertain cases are flagged for review.
-- IDSP reports arrive about two months late. Districts created recently (e.g. Bengaluru South) aren't in GeoNames and are mapped at state level.
-- Changing the refresh interval needs a scheduler restart.
-- Translation is automatic and can be wrong. Place names are sometimes translated or spelled oddly, so a translated article may be located less precisely than an English one. The original headline is always shown for checking.
-- The disease names and screening words in the 12 languages were collected and tested on real headlines, but not yet reviewed by native speakers.
-- Of the regional-language sources, only ETV Bharat, Rajasthan Patrika, Navbharat Times and Live Hindustan have archives the collector can use, so a 45-day backfill reaches back fully only for them. The other regional sites are covered from their feeds and 48-hour sitemaps onwards. Live Hindustan's district pages make Uttar Pradesh and Bihar the best-covered states; Punjab and Haryana have few regional-language sources that allow collection (Hari Bhoomi and Zee News block crawlers, Punjab Kesari's sitemap is out of date).
-- Translation runs on the processor, so a run with many new regional articles takes longer (about 10–20 seconds per article). The first run, with the backfill, can take a few hours.
+- Classification and location are rule-based. Some reports are missed or placed wrongly (see Evaluation), so uncertain locations are flagged and the register has a review column.
+- Translation is automatic and the names in the 12 languages have not yet been reviewed by native speakers.
+- History is limited: most regional sites have no usable archive, so the data goes back about 45 days, and alerts compare against only those weeks.
+- IDSP weekly reports arrive about two months late, so news and official records can only be compared later.
+- The newest districts are shown as points, not boundaries, and few localities get a village code.
+- Most news sites' terms of use restrict automated collection; each needs permission before production use (see Responsible use).

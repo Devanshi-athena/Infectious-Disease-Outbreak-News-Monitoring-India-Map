@@ -13,6 +13,9 @@ CREATE TABLE articles (
 	article_text TEXT, 
 	extraction_status VARCHAR(20), 
 	content_hash VARCHAR(64), 
+	language VARCHAR(8), 
+	headline_original TEXT, 
+	translation JSON, 
 	disease_tags JSON, 
 	matched_keywords JSON, 
 	relevance VARCHAR(20), 
@@ -35,6 +38,10 @@ CREATE TABLE articles (
 	location_source VARCHAR(20), 
 	location_reasons JSON, 
 	location_candidates JSON, 
+	state_lgd_code INTEGER, 
+	district_lgd_code INTEGER, 
+	subdistrict_lgd_code INTEGER, 
+	village_lgd_code INTEGER, 
 	PRIMARY KEY (article_id), 
 	UNIQUE (article_url)
 );
@@ -89,6 +96,10 @@ CREATE TABLE official_reports (
 	longitude FLOAT, 
 	location_level VARCHAR(20), 
 	location_confidence VARCHAR(20), 
+	state_lgd_code INTEGER, 
+	district_lgd_code INTEGER, 
+	subdistrict_lgd_code INTEGER, 
+	village_lgd_code INTEGER, 
 	collected_at DATETIME NOT NULL, 
 	PRIMARY KEY (report_id)
 );

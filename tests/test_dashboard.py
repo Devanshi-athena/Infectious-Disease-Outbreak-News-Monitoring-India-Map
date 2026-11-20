@@ -229,3 +229,13 @@ def test_alerts_rise_and_first_report():
     alerts = outbreak_alerts(_reports(rows))
     got = {(a.alert, a.disease, a.place, a.reports) for a in alerts.itertuples()}
     assert got == {("Rise", "Dengue", "Malappuram, Kerala", 4), ("First report", "Cholera", "Patna, Bihar", 1)}
+
+
+def test_states_without_reports():
+    import pandas as pd
+    from outbreak_monitor.dashboard_data import states_without_reports
+    df = pd.DataFrame({"effective_relevance": ["relevant", "irrelevant"], "country": ["India", "India"],
+                       "state_lgd_code": [27, 17]})
+    states = [{"state_code": "27", "state": "Maharashtra"}, {"state_code": "17", "state": "Meghalaya"},
+              {"state_code": "37", "state": "Ladakh"}]
+    assert states_without_reports(df, states) == ["Ladakh", "Meghalaya"]

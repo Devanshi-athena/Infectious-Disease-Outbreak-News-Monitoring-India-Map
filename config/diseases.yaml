@@ -6,7 +6,8 @@
 # the IDSP "P form / L form Case Definitions 2024" (NCDC; published by NHM Himachal Pradesh,
 # https://nhm.hp.gov.in/idsp/reporting-format). Names follow the forms. Two entries are not on the forms:
 # Food poisoning (the most frequent term in IDSP's own weekly outbreak reports) and COVID-19 (kept on
-# purpose). Bird flu in animals is recognised but not monitored (animal health, not an IDSP condition).
+# purpose). Bird flu in humans is monitored; bird flu in animals is recognised but not monitored (animal
+# health, not an IDSP condition).
 #
 #   name          IDSP condition name (shown on the dashboard).
 #   code          Stable identifier. Names may be reworded; codes never change.
@@ -347,6 +348,25 @@ diseases:
       ur: ["سوائن فلو"]
       ml: ["ഇൻഫ്ലുവൻസ"]
       pa: ["ਸਵਾਈਨ ਫਲੂ"]
+
+  - name: Bird flu in humans
+    code: AVIAN_FLU_HUMAN
+    idsp: L (influenza A H5N1 / H9N2 in people)
+    category: Respiratory
+    # Only phrases about an actual person's case. Plain "bird flu" is usually poultry (see "Bird flu in animals"
+    # below), and general phrases ("human cases of bird flu", "bird flu in humans") mostly appear in negations
+    # ("no human cases have been reported"), so they are not used.
+    keywords: ["first human case of bird flu", "first human case of H5N1", "first human case of avian influenza",
+               "new human case of bird flu", "new human case of H5N1", "confirmed human case of bird flu",
+               "confirmed human case of H5N1",
+               "child|boy|girl|man|woman|toddler|patient|person dies|died of|from bird flu",
+               "child|boy|girl|man|woman|toddler|patient|person dies|died of|from H5N1",
+               "child|boy|girl|man|woman|toddler|patient|person dies|died of|from avian influenza",
+               "child|boy|girl|man|woman|toddler|patient|person succumbs|succumbed to bird flu",
+               "child|boy|girl|man|woman|toddler|patient|person succumbs|succumbed to H5N1",
+               "child|boy|girl|man|woman|toddler|patient|person tests|tested positive for bird flu",
+               "child|boy|girl|man|woman|toddler|patient|person tests|tested positive for H5N1"]
+    search_terms: []
 
   - name: COVID-19
     code: COVID19
@@ -694,6 +714,30 @@ diseases:
     search_terms: []
     superseded_by: ["Acute Encephalitis Syndrome", "Japanese Encephalitis", "Malaria", "Meningitis",
                     "Nipah Virus Disease", "West Nile Virus"]
+
+  - name: Cough (up to 2 weeks)
+    code: S_COUGH_SHORT
+    idsp: S 2.6
+    category: Syndromes (S form)
+    # Clusters of cough and cold without a diagnosis. Never plain "cough" (it also matches cough syrup news).
+    keywords: ["cough and cold cases", "cases of cough and cold", "cough and fever cases", "cases of cough and fever",
+               "cough cases", "cases of cough", "cough outbreak"]
+    search_terms: []
+    superseded_by: ["Influenza-like illness (ILI)", "Severe acute respiratory infection (SARI)", "Influenza",
+                    "COVID-19", "Pertussis", "Measles", "Diphtheria", "Bird flu in humans", "Dengue", "Malaria",
+                    "Enteric fever (Typhoid)", "Chikungunya"]
+
+  - name: Cough (more than 2 weeks)
+    code: S_COUGH_LONG
+    idsp: S 2.7
+    category: Syndromes (S form)
+    # Clusters only: "persistent cough" alone is usually a symptom in a list.
+    keywords: ["cases of persistent cough", "persistent cough cases", "cases of prolonged cough",
+               "prolonged cough cases", "patients with persistent cough"]
+    search_terms: []
+    superseded_by: ["Influenza-like illness (ILI)", "Severe acute respiratory infection (SARI)", "Influenza",
+                    "COVID-19", "Pertussis", "Measles", "Diphtheria", "Bird flu in humans", "Dengue", "Malaria",
+                    "Enteric fever (Typhoid)", "Chikungunya"]
 
   - name: Jaundice (< 4 weeks)
     code: S_JAUNDICE

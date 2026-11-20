@@ -280,6 +280,15 @@ def reports_by_state(df: pd.DataFrame, limit: int = 6) -> list[tuple[str, int]]:
     return [(state, int(n)) for state, n in india["state"].value_counts().head(limit).items()]
 
 
+def states_without_reports(df: pd.DataFrame, all_states: list[dict]) -> list[str]:
+    """States and union territories of the LGD list with no relevant report in India (all_states: lgd.load
+    ("states") rows)."""
+    covered = set(df.loc[(df["effective_relevance"] == "relevant") & (df["country"] == "India"),
+                         "state_lgd_code"].dropna().astype(int)) if not df.empty else set()
+    return sorted(s["state"].replace(" And ", " and ").replace(" Of ", " of ") for s in all_states
+                  if int(s["state_code"]) not in covered)
+
+
 def save_reviews(session, changes: dict[int, str]) -> int:
     """Store a person's relevance decisions (relevance_status). Returns how many were changed."""
     changed = 0

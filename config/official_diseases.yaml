@@ -8,7 +8,8 @@
 #
 # The same standard applies to news articles: the term must identify the condition. Jaundice without a named
 # cause is the jaundice syndrome (S form), not hepatitis A or E; hepatitis without its type is acute viral
-# hepatitis. Bird flu in animals is not an IDSP condition and is not mapped.
+# hepatitis. Bird flu is mapped only when the report says it is in people; bird flu in animals is not an
+# IDSP condition and is not mapped.
 
 map:
   acute diarrhoeal disease: Acute Diarrhoeal Disease
@@ -49,6 +50,9 @@ map:
   h1n1: Influenza
   h3n2: Influenza
   swine flu: Influenza
+  human avian influenza: Bird flu in humans
+  avian influenza in humans: Bird flu in humans
+  human h5n1: Bird flu in humans
   ili: Influenza-like illness (ILI)
   influenza like illness: Influenza-like illness (ILI)
   sari: Severe acute respiratory infection (SARI)

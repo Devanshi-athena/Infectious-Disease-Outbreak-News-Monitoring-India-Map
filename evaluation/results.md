@@ -16,8 +16,8 @@ Labelled articles: 120 (missing from the database: 0)
 - Event status matches: 58/61 = 95%
 - Diseases exactly the same: 50/61 = 82%; at least one disease shared: 60/61 = 98%
 - Inside / outside India correct: 61/61 = 100%
-- State/UT correct (located in India by the labels): 54/57 = 95%
-- District level correct (district, or state level when the label has no district): 45/57 = 79%
+- State/UT correct (located in India by the labels): 55/57 = 96%
+- District level correct (district, or state level when the label has no district): 46/57 = 81%
 - Flagged for location review: 3/57
 
 ## Disagreements
@@ -26,7 +26,6 @@ Labelled articles: 120 (missing from the database: 0)
 |---|---|---|---|
 | location | 84 BSF personnel hospitalised in Imphal after ‘food poisoning’ | Manipur / Imphal West | Manipur / Imphal East |
 | location | Suspected rubella case in Simdega puts health dept on alert; MR vaccination drive intensif | Jharkhand / (state level) | Jharkhand / Simdega |
-| location | Norovirus On Prowl; Hosps, OPDs Start Getting Cases | West Bengal / Kolkata | Gujarat / Surat |
 | location | City logs 7 new dengue cases | Uttar Pradesh / Prayagraj | Delhi / (state level) [flagged] |
 | relevance | El Niño may increase dengue risk in Kerala, IITM study finds; climate model predicts 16-20 | irrelevant | relevant (outbreak_report) |
 | disease | ‘Rabid’ dog bites 16 in Latehar, victims given anti-rabies shots | Animal bite | Human Rabies |
@@ -39,5 +38,5 @@ Labelled articles: 120 (missing from the database: 0)
 | location | Amid at least 32 tribal kids’ death in MP’s Balaghat, fake doc yet to be arrested | Madhya Pradesh / Balaghat | Madhya Pradesh / (state level) |
 | location | Scrub Typhus cases surpass 2025 tally in nine months | Rajasthan / (state level) | Rajasthan / Jaipur |
 | relevance | Three for Baiga kids die in MP’s Balaghat, Cong MLA puts toll at 55 | relevant | irrelevant (passing_mention) |
-| location | CM reviews preparedness for northeast monsoon and dengue prevention | Tamil Nadu / (state level) | Gujarat / (state level) [flagged] |
+| location | CM reviews preparedness for northeast monsoon and dengue prevention | Tamil Nadu / (state level) | - / (state level) [flagged] |
 | location | UP govt to create policy for judicious antibiotic use | Uttar Pradesh / Lucknow | Uttar Pradesh / (state level) |

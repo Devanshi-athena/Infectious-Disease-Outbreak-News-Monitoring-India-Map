@@ -20,11 +20,13 @@ from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVEN
                                              OFFICIAL_COLOUR, REVIEW_OPTIONS, RISE_FACTOR, RISE_MIN_REPORTS, VIEWS,
                                              Filters, apply_filters, district_zoom_options, filter_official,
                                              latest_reports, lgd_label, load_articles, load_official, not_on_map,
+                                             states_without_reports,
                                              official_popup_html, official_state_disease_table, options,
                                              reports_by_state, save_reviews, state_disease_table, story_markers,
                                              outbreak_alerts, outbreak_events, summary, to_ist, event_text)
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
+from outbreak_monitor.lgd import load as load_lgd
 
 INDIA_BOUNDS = [[6.5, 68.0], [37.2, 97.5]]
 PAN_LIMITS = [[3.0, 63.0], [40.0, 102.0]]   # keep the view on India
@@ -191,6 +193,7 @@ def kpi(icon, colour, tint, label, value, hint, small=False):
 
 articles = load()
 official = load_official_reports()
+no_news_states = states_without_reports(articles, load_lgd("states"))
 opts = options(articles)
 if not official.empty:  # official records can name diseases and states no article mentions yet
     opts["diseases"] = sorted(set(opts["diseases"]) | {d for ds in official["diseases"] for d in ds})
@@ -267,7 +270,8 @@ st.markdown(f"""
 </div>
 <div class="notice"><span>ⓘ</span><div><b>Prototype.</b> A news-based monitoring tool, not an official surveillance
 or early-warning system. News coverage can be incomplete or delayed, and the number of articles is <b>not</b> a
-measure of disease incidence or outbreak severity.</div></div>
+measure of disease incidence or outbreak severity. Sources cover English and 12 Indian languages; see
+<i>About the data</i> for coverage gaps.</div></div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- key figures
@@ -704,14 +708,25 @@ published by NCDC as PDFs, are read automatically: one record per outbreak with 
 deaths, dates, status and the action taken. They appear about two months after the reporting week and are shown
 as their own layer, so they can be compared with the news reports.
 
-**Limits.** Classification and location are automatic and can be wrong; uncertain locations are flagged for review.
-Coverage depends on what the configured outlets publish.
+**Diseases.** The conditions of the Integrated Disease Surveillance Programme (IDSP) list: the IHIP S, P and L
+forms, plus food poisoning and COVID-19. Bird flu is counted only when a person is affected; bird flu in poultry
+and wild birds is animal health and is not shown.
 
 **Data and attribution.** Map tiles © OpenStreetMap contributors. India's boundary: official boundary of
 India as per the Survey of India, compiled by the DataMeet India community (CC0). Place data © GeoNames (CC BY 4.0).
 Geocoding © OpenStreetMap contributors (ODbL), via Nominatim. Translation: IndicTrans2 by AI4Bharat (MIT licence).
 Articles © their publishers; follow the links to read the originals.
 """)
+    no_news = ", ".join(no_news_states) or "none"
+    st.warning(f"""
+**Disclaimer.** This is a prototype that reads public news. It shows what the news reports, not confirmed outbreaks
+or case numbers; check every report against official IDSP data before acting on it. Classification, location and
+translation are automatic and can be wrong; uncertain locations are flagged for review.
+
+**Coverage.** News sites in English and 12 Indian languages. Languages such as Nepali, Khasi and Mizo are not
+covered yet. States and union territories with no relevant news report so far: {no_news}. A place with no reports
+on the map is not necessarily free of disease.
+""", icon=":material/info:")
 
 st.markdown('<div class="footer"><span>Infectious Disease Outbreak Monitor · prototype</span>'
             '<span>Not an official surveillance or early-warning system. Articles © their publishers.</span></div>',
