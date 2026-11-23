@@ -378,7 +378,7 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
                 log.info("Keywords changed: re-checking links rejected for having no keyword")
                 session.execute(delete(SeenLink).where(SeenLink.outcome == "no_keyword"))
                 session.commit()
-            if has_articles:
+            if has_articles and (previous_hash or "")[32:] != current_hash[32:]:   # not yet done by reprocess.py
                 log.info("Configuration changed: re-processing stored articles")
                 reprocess(session, matcher, classifier, locator, keywords)
 

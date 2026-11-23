@@ -15,7 +15,7 @@ from collections import Counter
 from sqlalchemy import select
 
 from .config import load_disease_config
-from .db import Article, get_session_factory
+from .db import Article, CollectionRun, get_session_factory, utcnow
 from .location import LocationResolver, build_resolver
 from .location import apply as apply_location
 from .logs import setup_logging
@@ -61,6 +61,17 @@ def main():
     with factory() as session:
         counts = reprocess(session, KeywordMatcher(diseases), RelevanceClassifier(diseases, load_relevance_config()),
                            build_resolver(factory), {d.name: d.keywords for d in diseases})
+        # Record that stored articles match the current configuration, so the next collection run does not
+        # re-process them again. The keyword half stays as it was: if keywords changed, that run still
+        # re-checks links rejected for having no keyword. Status "reprocessed" is not a collection run (it does
+        # not count as the last refresh).
+        from .collector import config_hash   # imported here: collector imports this module
+        previous = session.scalar(select(CollectionRun.config_hash).where(CollectionRun.config_hash.is_not(None))
+                                  .order_by(CollectionRun.run_id.desc()).limit(1))
+        current = config_hash()
+        session.add(CollectionRun(mode="reprocess", status="reprocessed", finished_at=utcnow(),
+                                  config_hash=(previous or current)[:32] + current[32:]))
+        session.commit()
     print(f"Re-processed {sum(counts.values())} articles")
     for (relevance, content_type, status), n in counts.most_common():
         print(f"  {n:4d}  {relevance:10s}  {content_type:24s}  {status or ''}")
