@@ -44,6 +44,7 @@ python -m evaluation.location_eval                # location accuracy on a secon
 python -m evaluation.recall_check                 # compare coverage with Bing News (evaluation only)
 python -m outbreak_monitor.gazetteer              # rebuild the place reference data (rarely needed)
 python -m outbreak_monitor.lgd --download         # refresh the LGD code lists (rarely needed)
+python -m outbreak_monitor.boundaries             # rebuild the state and district boundaries of the map (rarely needed)
 python -m outbreak_monitor.lgd --new-districts    # add LGD districts missing from GeoNames, located with Nominatim
 python -m outbreak_monitor.lgd --villages         # download the LGD village list (about 1 hour, resumable)
 python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
@@ -263,7 +264,7 @@ LGD still lists many city areas as villages (Hadapsar in Pune), and the same vil
 
 `streamlit run app.py` opens it at http://localhost:8501.
 
-- **Map** of India only (the official boundary; everything outside India is masked). There is one marker per story, coloured by event status, and nearby markers group together when zoomed out into a violet circle showing how many reports it holds (zoom in or click to see them). Clicking a marker shows the disease, headline, location, date and links to every source that reported it. Official IDSP records appear as green squares on their own layer.
+- **Map** of India only, on the official boundary (everything outside India is covered). Every name on the map is written by the tool in English, and the optional terrain and satellite backgrounds have no labels, so no foreign-script place names appear. Districts are shaded by the number of reports (darker = more), and districts where news reports are rising are outlined in red. Hovering a district shows its numbers, diseases, alerts and latest headlines. Clicking it makes it pop out (the rest of India dims and the map zooms to it): its reports appear as dots at their places, coloured by event status, with the full list in a panel beside the map; clicking outside the district goes back. Reports that name only a state appear as a small pill under the state's name. A switch in the sidebar shows news reports (violet), official IDSP records (green, with squares for the records), or both. Choosing a district in *Focus the map* opens it the same way.
 - **Filters** in the sidebar: disease group, disease, state, language, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
 - **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
 - **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
@@ -339,8 +340,9 @@ Third-party data and services:
 |---|---|---|
 | [GeoNames](https://www.geonames.org) | place reference data | CC BY 4.0 |
 | [DataMeet India maps](https://github.com/datameet/maps/tree/master/Country) | India's official boundary on the map | CC0 |
+| [INDIAN-SHAPEFILES](https://github.com/datta07/INDIAN-SHAPEFILES) | state and district boundaries (2023), matched to LGD codes by `python -m outbreak_monitor.boundaries` | MIT |
 | [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages and the newest districts | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
-| [OpenStreetMap tiles](https://operations.osmfoundation.org/policies/tiles/) | base map | light use only; switch to a tile provider for heavier or public use (one line in `app.py`) |
+| [Esri World Shaded Relief and World Imagery](https://www.esri.com/en-us/legal/terms/full-master-agreement) | map background (no labels) | free with attribution; check Esri's terms before public deployment |
 | [NCDC](https://ncdc.mohfw.gov.in/) | official outbreak reports | reuse with acknowledgement |
 | [Local Government Directory](https://lgdirectory.gov.in) (Ministry of Panchayati Raj) | official codes of states, districts, sub-districts and villages | public government directory, read through its web service |
 | [IndicTrans2](https://github.com/AI4Bharat/IndicTrans2) (AI4Bharat) | translating Indian-language articles; `indic_processor.py` is from IndicTransToolkit | MIT |
@@ -363,9 +365,11 @@ outbreak_monitor/
   collector.py             one collection run; scheduler.py runs it every 30 minutes
   reprocess.py             re-applies the configuration to stored articles
   dashboard_data.py        data behind the dashboard
+  boundaries.py            state and district boundaries, matched to LGD codes
+  map_view.py              the India map: base map, district shading, borders, labels, markers
   export_samples.py        sample records and schema
 config/                    diseases, relevance cues, locations, sources
-reference/                 place data, India boundary and LGD code lists
+reference/                 place data, India, state and district boundaries, LGD code lists
 evaluation/                evaluation report, labels and scripts
 samples/                   example records and database schema
 tests/                     pytest tests
@@ -398,5 +402,5 @@ Coverage depends on what the news covers. Sources are in English and 12 Indian l
 - Translation is automatic and the names in the 12 languages have not yet been reviewed by native speakers.
 - History is limited: most regional sites have no usable archive, so the data goes back about 45 days, and alerts compare against only those weeks.
 - IDSP weekly reports arrive about two months late, so news and official records can only be compared later.
-- The newest districts are shown as points, not boundaries, and few localities get a village code.
+- District boundaries are of 2023: the 15 districts created since are counted inside the district they came from (Delhi shows its earlier 11 districts), and few localities get a village code.
 - Most news sites' terms of use restrict automated collection; each needs permission before production use (see Responsible use).

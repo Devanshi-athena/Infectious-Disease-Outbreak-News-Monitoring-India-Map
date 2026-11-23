@@ -305,7 +305,8 @@ def save_reviews(session, changes: dict[int, str]) -> int:
 
 OFFICIAL_COLUMNS = ["report_id", "source_name", "report_url", "report_year", "report_week", "state", "district",
                     "disease_raw", "diseases", "cases", "deaths", "onset_date", "reported_date", "status",
-                    "action_taken", "latitude", "longitude", "location_level", "location_confidence"]
+                    "action_taken", "latitude", "longitude", "location_level", "location_confidence",
+                    "district_lgd_code"]
 
 
 def load_official(session) -> pd.DataFrame:

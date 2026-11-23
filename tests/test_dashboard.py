@@ -239,3 +239,54 @@ def test_states_without_reports():
     states = [{"state_code": "27", "state": "Maharashtra"}, {"state_code": "17", "state": "Meghalaya"},
               {"state_code": "37", "state": "Ladakh"}]
     assert states_without_reports(df, states) == ["Ladakh", "Meghalaya"]
+
+
+def test_district_boundaries_cover_lgd_and_decode():
+    from outbreak_monitor.lgd import load as load_lgd
+    from outbreak_monitor.map_view import _decoded, district_at, state_bounds, topology
+    topo = topology()
+    codes = {d["dc"] for d in topo["districts"]}
+    lgd = {int(r["district_code"]) for r in load_lgd("districts")}
+    assert len(lgd - codes) <= 20                       # only districts created after the 2023 boundaries
+    assert all(d["name"] and d["state"] for d in topo["districts"])
+    assert all(ord(ch) < 128 for d in topo["districts"] for ch in d["name"] + d["state"])   # English names only
+    assert {"Muzaffarabad", "Mirpur"} <= {d["name"] for d in topo["districts"] if d["state"] == "Jammu and Kashmir"}
+    assert set(topo["lines"]) == {"district", "state", "india"}
+    assert len(_decoded()) == len(topo["districts"])
+    assert district_at(77.209, 28.614) in {d["dc"] for d in topo["districts"] if d["state"] == "Delhi"}   # New Delhi
+    assert district_at(72.87, 19.07) is not None                                                         # Mumbai
+    assert district_at(60.0, 20.0) is None                                                               # Arabian Sea
+    (s, w), (n, e) = state_bounds()["Kerala"]
+    assert 8 < s < 9 and 12 < n < 13 and 74 < w < 75.5 and 77 < e < 78
+
+
+def test_district_reports_count_stories_once():
+    import pandas as pd
+    from outbreak_monitor.map_view import district_reports, shade
+    df = pd.DataFrame({"country": ["India"] * 4, "story_id": [1, 1, 2, 3],
+                       "district_lgd_code": [102.0, 102.0, 102.0, None],
+                       "latitude": [26.9, 26.9, 26.9, 27.0], "longitude": [75.8, 75.8, 75.8, 75.0],
+                       "diseases": [["Dengue"], ["Dengue"], ["Dengue", "Malaria"], ["Dengue"]]})
+    counts = district_reports(df)
+    assert list(counts) == [102] and counts[102].stories == 2
+    assert counts[102].diseases == [("Dengue", 2), ("Malaria", 1)]
+    assert shade(0) is None and shade(1) != shade(2) and shade(16) == shade(100)
+
+
+def test_map_renders_without_foreign_tiles():
+    import pandas as pd
+    from outbreak_monitor.gazetteer import india_mask, load_boundary
+    from outbreak_monitor.map_view import alert_districts, build_map
+    alerts = alert_districts(pd.DataFrame([{"alert": "Rise", "disease": "Dengue", "reports": 5, "district_lgd_code": 102},
+                                           {"alert": "First report", "disease": "Malaria", "reports": 1,
+                                            "district_lgd_code": 102}]))
+    assert alerts[102]["rise"] and len(alerts[102]["list"]) == 2
+    item = {"la": 26.9, "lo": 75.8, "dc": 102, "st": "Rajasthan", "s": "new", "p": "Jaipur", "h": "x", "c": "<b>x</b>",
+            "t": "2026-11-20"}
+    for mode in ("news", "official", "both"):
+        page = build_map([item], [], {102: {"n": 1, "top": ""}}, {}, alerts, mode,
+                         india_mask(load_boundary())).get_root().render()
+        assert "openstreetmap" not in page.lower() and "World_Shaded_Relief" in page
+        assert '"maxZoom": 16' in page
+        # the card is escaped so that data cannot close the script element; official mode carries no news items
+        assert (r'<b>x<\/b>' in page) == (mode != "official")

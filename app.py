@@ -10,9 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import altair as alt
-import folium
 import streamlit as st
-from folium.plugins import Fullscreen, MarkerCluster
 from streamlit_folium import st_folium
 
 from outbreak_monitor.config import load_disease_config
@@ -21,17 +19,15 @@ from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVEN
                                              Filters, apply_filters, district_zoom_options, filter_official,
                                              latest_reports, lgd_label, load_articles, load_official, not_on_map,
                                              states_without_reports,
-                                             official_popup_html, official_state_disease_table, options,
-                                             reports_by_state, save_reviews, state_disease_table, story_markers,
+                                             official_state_disease_table, options,
+                                             reports_by_state, save_reviews, state_disease_table,
                                              outbreak_alerts, outbreak_events, summary, to_ist, event_text)
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
 from outbreak_monitor.lgd import load as load_lgd
+from outbreak_monitor.map_view import (MODES, alert_districts, build_map, district_code, district_counts,
+                                       news_items, official_items, state_bounds)
 
-INDIA_BOUNDS = [[6.5, 68.0], [37.2, 97.5]]
-PAN_LIMITS = [[3.0, 63.0], [40.0, 102.0]]   # keep the view on India
-MAP_BACKGROUND = "#EEF2F7"                   # colour outside India's boundary
-CLUSTER_COLOUR = "#6D28D9"                   # groups of news reports: violet, unlike any single-report colour
 LOGO = Path(__file__).parent / "assets" / "aplyd_logo.png"
 st.set_page_config(page_title="Outbreak News Monitor · India", page_icon="🩺", layout="wide")
 factory = get_session_factory()
@@ -160,11 +156,26 @@ def load_official_reports():
         return load_official(session)
 
 
+# Map data and alerts for a set of filters: cached, so the page does not recompute them on every click
+@st.cache_data(ttl=60, show_spinner=False)
+def map_news_items(key: tuple) -> list[dict]:
+    return news_items(apply_filters(load(), Filters(*key)))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def map_official_items(diseases: tuple, states: tuple) -> list[dict]:
+    return official_items(filter_official(load_official_reports(), list(diseases), list(states)))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_alerts(diseases: tuple, states: tuple):
+    return outbreak_alerts(apply_filters(load(), Filters(diseases=list(diseases), states=list(states))))
+
+
 @st.cache_resource(show_spinner=False)
-def india_shapes():
-    """India's official boundary (outline) and a mask that hides everything outside it."""
-    boundary = load_boundary()
-    return boundary, india_mask(boundary)
+def india_mask_shape():
+    """A mask that hides everything outside India's official boundary."""
+    return india_mask(load_boundary())
 
 
 def run_refresh():
@@ -228,9 +239,10 @@ with st.sidebar:
     else:
         dates = ()
     st.markdown('<div class="section">Map layers</div>', unsafe_allow_html=True)
-    show_official = st.toggle("Official IDSP reports", value=True,
-                              help="Weekly outbreak reports of the Integrated Disease Surveillance Programme "
-                                   "(NCDC). Published about two months late, so the date filter does not apply.")
+    map_mode = st.radio("Map shows", list(MODES), format_func=MODES.get, index=0, horizontal=False,
+                        help="Official IDSP records are the weekly outbreak reports of the Integrated Disease "
+                             "Surveillance Programme (NCDC). They are published about two months late, so the "
+                             "date filter does not apply to them.")
     include_abroad = st.toggle("Reports outside India (list only)", value=False)
     st.markdown('<div class="section">Data</div>', unsafe_allow_html=True)
     if st.button("Refresh now", icon=":material/refresh:", width="stretch", type="primary",
@@ -243,11 +255,12 @@ start, end = (dates[0], dates[1]) if isinstance(dates, (tuple, list)) and len(da
 filters = Filters(view=view, diseases=diseases, states=states, sources=sources, languages=languages, start=start,
                   end=end, include_abroad=include_abroad)
 matching = apply_filters(articles, filters)
-markers = story_markers(matching)
+filter_key = (view, list(diseases), list(states), list(sources), list(languages), start, end, include_abroad)
+news_on_map = map_news_items(tuple(tuple(v) if isinstance(v, list) else v for v in filter_key))
 unmapped = not_on_map(matching)
 official_matching = filter_official(official, diseases, states)
-official_mapped = (official_matching[official_matching["latitude"].notna()] if show_official
-                   and not official_matching.empty else official_matching.iloc[0:0])
+official_on_map = map_official_items(tuple(diseases), tuple(states))
+alerts = cached_alerts(tuple(diseases), tuple(states))
 
 with factory() as session:
     totals = summary(matching, session)
@@ -277,7 +290,7 @@ measure of disease incidence or outbreak severity. Sources cover English and 12 
 # ---------------------------------------------------------------- key figures
 st.markdown('<div class="kpis">'
             + kpi("news", "#1554A6", "#E8F0FB", "Articles", f"{totals['articles']:,}", "matching the filters")
-            + kpi("layers", "#D64545", "#FDECEC", "Stories mapped", f"{len(markers):,}",
+            + kpi("layers", "#D64545", "#FDECEC", "Stories mapped", f"{len(news_on_map):,}",
                   "one marker per story")
             + kpi("pin", "#7C3AED", "#F1EBFE", "Locations", f"{totals['locations']:,}", "states, districts, towns")
             + kpi("shield", OFFICIAL_COLOUR, "#E6F4EE", "Official records", f"{len(official_matching):,}",
@@ -291,106 +304,34 @@ map_col, side_col = st.columns([2.4, 1], gap="large")
 
 with map_col:
     district_centres = district_zoom_options(matching)
-    zoom_choice = st.selectbox("Focus the map", ["All of India"] + list(district_centres),
+    bounds_of_state = state_bounds()
+    focus_states = [s for s in opts["states"] if s in bounds_of_state]
+    zoom_choice = st.selectbox("Focus the map", ["All of India"] + focus_states + list(district_centres),
                                label_visibility="collapsed")
-
-    fmap = folium.Map(location=[22.5, 80.0], zoom_start=5, tiles=None, control_scale=True, min_zoom=4,
-                      max_bounds=True, min_lat=PAN_LIMITS[0][0], max_lat=PAN_LIMITS[1][0],
-                      min_lon=PAN_LIMITS[0][1], max_lon=PAN_LIMITS[1][1],
-                      zoomSnap=0.25, zoomDelta=0.5)  # fractional zoom so India fills the frame
-    # Free tiles without an API key: OpenStreetMap (light use only, see its tile usage policy). CARTO's light map
-    # now shows only "API KEY REQUIRED" without a key, so it is not used.
-    folium.TileLayer("OpenStreetMap", name="Street map").add_to(fmap)
-    fmap.get_root().header.add_child(folium.Element(
-        f"<style>.leaflet-container {{ background: {MAP_BACKGROUND}; font-family: Inter, 'Segoe UI', Arial, sans-serif; }}"
-        ".leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; overflow: hidden;"
-        " box-shadow: 0 8px 24px rgba(16,24,40,.18); }"
-        ".leaflet-popup-content { margin: 0; }"
-        ".leaflet-bar a, .leaflet-control-layers { border-radius: 8px !important; }"
-        ".leaflet-control-attribution { font-size: 10px; background: rgba(255,255,255,.85) !important; }</style>"))
-    # Only India: everything outside the official boundary is covered in the background colour, and India is outlined.
-    boundary, mask = india_shapes()
-    folium.GeoJson(mask, name="Outside India", control=False, interactive=False,
-                   style_function=lambda _: {"fillColor": MAP_BACKGROUND, "fillOpacity": 1.0,
-                                             "stroke": False}).add_to(fmap)
-    folium.GeoJson(boundary, name="India boundary", control=False, interactive=False,
-                   style_function=lambda _: {"fill": False, "color": "#13396B", "weight": 1.6,
-                                             "opacity": 0.9}).add_to(fmap)
-    cluster = MarkerCluster(
-        name="Outbreak reports",
-        icon_create_function="""
-          function(cluster) {
-            var n = cluster.getChildCount();
-            var size = n < 10 ? 32 : (n < 50 ? 40 : 48);
-            return L.divIcon({
-              html: '<div style="width:' + size + 'px;height:' + size + 'px;line-height:' + size + 'px;'
-                  + 'border-radius:50%;background:""" + CLUSTER_COLOUR + """;color:#fff;text-align:center;'
-                  + 'font:600 13px Inter,Segoe UI,Arial,sans-serif;'
-                  + 'box-shadow:0 0 0 5px rgba(109,40,217,.22),0 2px 6px rgba(0,0,0,.25)">'
-                  + n + '</div>',
-              className: '', iconSize: L.point(size, size)
-            });
-          }""").add_to(fmap)
-    for m in markers:
-        colour = EVENT_COLOURS.get(m.event_status, EVENT_COLOURS["unclear"])
-        folium.Marker(
-            [m.latitude, m.longitude],
-            popup=folium.Popup(m.popup_html, max_width=340),
-            tooltip=html.escape(m.headline if len(m.headline) <= 60 else m.headline[:57] + "…"),
-            icon=folium.DivIcon(
-                html=f'<div style="width:14px;height:14px;border-radius:50%;background:{colour};'
-                     'border:2px solid #FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,.2),0 1px 4px rgba(0,0,0,.3)"></div>',
-                icon_size=(18, 18), icon_anchor=(9, 9)),
-        ).add_to(cluster)
-    official_layer = folium.FeatureGroup(name="Official reports (IDSP)", show=True)
-    for r in official_mapped.itertuples():
-        folium.Marker(
-            [r.latitude, r.longitude],
-            popup=folium.Popup(official_popup_html(r), max_width=340),
-            tooltip=html.escape(f"Official: {r.disease_raw or '—'} · {r.district or r.state or ''}"),
-            icon=folium.DivIcon(
-                html=f'<div style="width:12px;height:12px;background:{OFFICIAL_COLOUR};border:2px solid #FFFFFF;'
-                     'border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 1px 4px rgba(0,0,0,.3)"></div>',
-                icon_size=(16, 16), icon_anchor=(8, 8)),
-        ).add_to(official_layer)
-    official_layer.add_to(fmap)
-    legend = "".join(f'<div style="margin:4px 0;display:flex;align-items:center"><span style="display:inline-block;'
-                     f'width:11px;height:11px;border-radius:50%;background:{EVENT_COLOURS[k]};border:2px solid #fff;'
-                     f'box-shadow:0 0 0 1px rgba(0,0,0,.15);margin-right:8px"></span>{EVENT_LABELS[k]}</div>'
-                     for k in EVENT_COLOURS)
-    fmap.get_root().html.add_child(folium.Element(
-        '<div style="position:absolute;bottom:28px;left:12px;z-index:9999;background:rgba(255,255,255,.96);'
-        'border:1px solid #E2E8F0;border-radius:12px;padding:10px 14px;font:12px Inter,\'Segoe UI\',Arial,sans-serif;'
-        'color:#172033;box-shadow:0 4px 14px rgba(16,24,40,.12)"><div style="font-weight:700;font-size:11px;'
-        f'letter-spacing:.08em;text-transform:uppercase;color:#5A687D;margin-bottom:4px">News reports</div>{legend}'
-        '<div style="margin:8px 0 2px 0;border-top:1px solid #E2E8F0;padding-top:7px;display:flex;align-items:center">'
-        f'<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;'
-        f'border-radius:50%;background:{CLUSTER_COLOUR};color:#fff;font-size:10px;font-weight:600;margin-right:6px">'
-        '12</span>Group of news reports</div>'
-        '<div style="margin:0 0 4px 26px;color:#5A687D;font-size:11px;max-width:170px">The number is how many reports; '
-        'zoom in or click to see them</div>'
-        '<div style="margin:8px 0 2px 0;border-top:1px solid #E2E8F0;padding-top:7px;display:flex;align-items:center">'
-        f'<span style="display:inline-block;width:11px;height:11px;background:{OFFICIAL_COLOUR};border:2px solid #fff;'
-        'border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.15);margin-right:8px"></span>Official report (IDSP)</div>'
-        '</div>'))
-    Fullscreen(position="topright").add_to(fmap)
-    folium.LayerControl(position="topright", collapsed=True).add_to(fmap)
-
+    selected_district = None
     if zoom_choice in district_centres:
         lat, lon = district_centres[zoom_choice]
-        fmap.fit_bounds([[lat - 0.35, lon - 0.35], [lat + 0.35, lon + 0.35]])
-    elif markers and (states or chosen_diseases or sources or languages):
-        lats, lons = [m.latitude for m in markers], [m.longitude for m in markers]
-        fmap.fit_bounds([[min(lats) - 0.5, min(lons) - 0.5], [max(lats) + 0.5, max(lons) + 0.5]], max_zoom=9)
+        focus, focus_zoom = [[lat - 0.45, lon - 0.45], [lat + 0.45, lon + 0.45]], None
+        selected_district = district_code(*zoom_choice.rsplit(", ", 1))   # opens selected, with its reports
+    elif zoom_choice in bounds_of_state:
+        focus, focus_zoom = bounds_of_state[zoom_choice], 9
+    elif len(states) == 1 and states[0] in bounds_of_state:
+        focus, focus_zoom = bounds_of_state[states[0]], 9
+    elif news_on_map and (states or chosen_diseases or sources or languages):
+        lats, lons = [m["la"] for m in news_on_map], [m["lo"] for m in news_on_map]
+        focus, focus_zoom = [[min(lats) - 0.5, min(lons) - 0.5], [max(lats) + 0.5, max(lons) + 0.5]], 9
     else:
-        fmap.fit_bounds(INDIA_BOUNDS)
-
-    st_folium(fmap, height=720, use_container_width=True, returned_objects=[], key="map")
-    st.caption("Small dots: news stories (one per story; the same report from several publishers is listed in one "
-               "popup), at the most specific place the article supports, coloured by event status. Violet circles "
-               "with a number: several news stories close together at this zoom level; the number is how many, and "
-               "zooming in or clicking shows them. Green squares: official IDSP outbreak records, at the district "
-               "centre."
+        focus, focus_zoom = None, None
+    fmap = build_map(news_on_map, official_on_map,
+                     district_counts(news_on_map), district_counts(official_on_map),
+                     alert_districts(alerts), map_mode, india_mask_shape(), bounds=focus, max_zoom=focus_zoom,
+                     select=selected_district)
+    st_folium(fmap, height=740, use_container_width=True, returned_objects=[], key="map")
+    st.caption("Districts are shaded by the number of reports (darker = more); districts where news reports are "
+               "rising in the last 7 days are outlined in red. Hover a district for its numbers and latest reports; "
+               "click it to see each report at its place on the map, with the full list beside it. A report carried "
+               "by several publishers counts once. Boundaries follow the official map of India; all names are in "
+               "English. The layer button (top right) switches the background to terrain or satellite."
                + (f" **{len(unmapped)} matching article(s) from India name no state or district and are not on the "
                   "map**; they are listed in the *Not on the map* tab below." if not unmapped.empty else ""))
 
@@ -424,7 +365,6 @@ with side_col:
                     'regions and outlets.</div></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- register + about
-alerts = outbreak_alerts(apply_filters(articles, Filters(diseases=diseases, states=states)))
 events = outbreak_events(matching)
 alerts_tab, events_tab, register_tab, states_tab, unmapped_tab, official_tab, about_tab = st.tabs([
     f":material/notifications_active: Alerts ({len(alerts)})",
@@ -712,8 +652,16 @@ as their own layer, so they can be compared with the news reports.
 forms, plus food poisoning and COVID-19. Bird flu is counted only when a person is affected; bird flu in poultry
 and wild birds is animal health and is not shown.
 
-**Data and attribution.** Map tiles © OpenStreetMap contributors. India's boundary: official boundary of
-India as per the Survey of India, compiled by the DataMeet India community (CC0). Place data © GeoNames (CC BY 4.0).
+**The map.** India only, with its official boundary; everything outside it is covered. State and district
+boundaries are linked to the Local Government Directory (LGD) codes, and every name on the map is written by this
+tool in English: the background shows terrain or satellite imagery without any labels. Districts are shaded by the
+number of news reports placed in them; reports placed only at state level are not counted in a district. District
+boundaries are of 2023: the 15 districts created since (in Ladakh, Delhi, Andhra Pradesh, Gujarat, Haryana, Goa and
+Nagaland) are counted in the district they were carved from, and Delhi is shown with its earlier 11 districts.
+
+**Data and attribution.** India's boundary: official boundary of India as per the Survey of India, compiled by the
+DataMeet India community (CC0). District boundaries: INDIAN-SHAPEFILES by Akula Datta (MIT licence), matched to LGD.
+Terrain and satellite background © Esri. Place data © GeoNames (CC BY 4.0).
 Geocoding © OpenStreetMap contributors (ODbL), via Nominatim. Translation: IndicTrans2 by AI4Bharat (MIT licence).
 Articles © their publishers; follow the links to read the originals.
 """)
