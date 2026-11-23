@@ -390,7 +390,7 @@ models/                    translation model (downloaded, not in git)
 
 This is a prototype that reads public news. It shows what the news reports, not confirmed outbreaks or case numbers, and every report should be checked against official IDSP data before any action is taken.
 
-Coverage depends on what the news covers. Sources are in English and 12 Indian languages; languages such as Nepali, Khasi and Mizo are not covered yet, and some smaller states and union territories (Andaman and Nicobar Islands, Dadra and Nagar Haveli and Daman and Diu, Ladakh, Lakshadweep, Meghalaya, Mizoram, Puducherry, Sikkim) have had little or no outbreak news in the period collected. A place with no reports on the map is not necessarily free of disease.
+Coverage depends on what the news covers. Sources are in English and 12 Indian languages; languages such as Nepali, Khasi and Mizo are not covered yet, and some smaller states and union territories (Andaman and Nicobar Islands, Dadra and Nagar Haveli and Daman and Diu, Ladakh, Lakshadweep, Meghalaya, Mizoram, Sikkim) have had no outbreak news in the period collected. The dashboard's About tab lists them from the current data. A place with no reports on the map is not necessarily free of disease.
 
 ## Known limitations
 
