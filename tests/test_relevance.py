@@ -191,3 +191,14 @@ def test_keywords_match_across_quote_marks():
     assert pattern.search("'Mystery' fever kills 2 sisters in Baran")
     assert pattern.search("“Bird” flu scare") and pattern.search("bird-flu cases")
     assert not pattern.search("mysteryfever") and not pattern.search("birds flu")
+
+
+def test_native_keyword_excluded_endings():
+    from outbreak_monitor.config import load_disease_config
+    from outbreak_monitor.matcher import KeywordMatcher
+    m = KeywordMatcher(load_disease_config().diseases)
+    assert m.match("ഇൻഫ്ലുവൻസ കേസുകൾ കൂടുന്നു") == ["Influenza"]              # influenza cases rise
+    assert m.match("ഇൻഫ്ലുവൻസയുടെ വ്യാപനം") == ["Influenza"]                # spread of influenza
+    assert m.match("ഇൻഫ്ലുവൻസറുടെ വീട്ടിലെത്തി") == []                      # influencer's house
+    assert m.match("വ്ലോഗർമാർക്കും ഇൻഫ്ലുവൻസർമാർക്കും എതിരെ നടപടി") == []   # influencers
+    assert m.match("ഏവിയൻ ഇൻഫ്ലുവൻസയുടെ സ്ഥിരീകരണം") == []                    # avian influenza: animals

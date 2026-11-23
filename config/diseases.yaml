@@ -346,7 +346,7 @@ diseases:
       te: ["స్వైన్ ఫ్లూ"]
       ta: ["பன்றிக் காய்ச்சல்", "பன்றிக்காய்ச்சல்"]
       ur: ["سوائن فلو"]
-      ml: ["ഇൻഫ്ലുവൻസ"]
+      ml: ["ഇൻഫ്ലുവൻസ!ർറ"]   # not followed by ർ/റ: ഇൻഫ്ലുവൻസർ is "influencer"
       pa: ["ਸਵਾਈਨ ਫਲੂ"]
 
   - name: Bird flu in humans
@@ -832,16 +832,16 @@ diseases:
     # Recognised so that "influenza" inside "avian influenza" is not counted as human influenza.
     keywords: ["bird flu", "avian influenza", "avian flu", "H5N1", "H5N8", "highly pathogenic avian influenza"]
     native_keywords:
-      hi: ["बर्ड फ्लू"]
+      hi: ["बर्ड फ्लू", "एवियन इन्फ्लूएंजा", "एवियन इन्फ्लुएंजा"]
       mr: ["बर्ड फ्लू"]
-      bn: ["বার্ড ফ্লু"]
+      bn: ["বার্ড ফ্লু", "এভিয়ান ইনফ্লুয়েঞ্জা"]
       as: ["বাৰ্ড ফ্লু"]
       te: ["బర్డ్ ఫ్లూ"]
       ta: ["பறவைக் காய்ச்சல்", "பறவைக்காய்ச்சல்"]
       ur: ["برڈ فلو"]
       kn: ["ಹಕ್ಕಿ ಜ್ವರ"]
       or: ["ବାର୍ଡ ଫ୍ଲୁ"]
-      ml: ["പക്ഷിപ്പനി"]
+      ml: ["പക്ഷിപ്പനി", "ഏവിയൻ ഇൻഫ്ലുവൻസ"]
 
 # General words that make a regional article worth translating: fever, epidemic, jaundice, loose motions.
 # Per language; they apply only to sources in that language. They never tag a disease by themselves.

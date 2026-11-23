@@ -20,11 +20,15 @@ def normalise_text(text: str) -> str:
 def phrase_pattern(phrase: str) -> str:
     """Regex for a phrase as whole words (use case-insensitively); spaces also match hyphens/newlines
     and quote marks ("'Mystery' fever" matches "mystery fever"). A trailing * matches any word ending
-    (e.g. "hospitali*"). Alternatives of one word are separated by | ("girl|boy dies of bird flu")."""
+    (e.g. "hospitali*"); "*!xy" also requires that the ending does not start with x or y. Alternatives of one
+    word are separated by | ("girl|boy dies of bird flu")."""
+    phrase, _, not_followed_by = phrase.partition("!")
     wildcard = phrase.endswith("*")
     words = normalise_text(phrase.rstrip("*")).split()
     words = ["(?:" + "|".join(map(re.escape, w.split("|"))) + ")" if "|" in w else re.escape(w) for w in words]
     body = r"""[\s\-'‘’"“”]*[\s-][\s\-'‘’"“”]*""".join(words)
+    if not_followed_by:
+        body += "(?![" + re.escape(normalise_text(not_followed_by)) + "])"
     return r"(?<!\w)" + body + (r"\w*" if wildcard else r"(?!\w)")
 
 

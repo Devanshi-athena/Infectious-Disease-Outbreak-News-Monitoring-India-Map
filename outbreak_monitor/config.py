@@ -53,7 +53,9 @@ def native_pattern(word: str) -> str:
     """A native-language keyword as a matcher phrase: Indian languages attach case endings and postpositions
     to the word ("डेंगू" -> "डेंगूने", "டெங்கு" -> "டெங்குவால்"), so endings are allowed (trailing *), except for
     short words and words written with a trailing "=", which would otherwise match the start of unrelated
-    words (Bengali "হাম" in "হামলা", "নিপা=" not in "নিপাত")."""
+    words (Bengali "হাম" in "হামলা", "নিপা=" not in "নিপাত"). Letters after a "!" may not follow the word:
+    Malayalam "ഇൻഫ്ലുവൻസ!ർറ" (influenza) does not match ഇൻഫ്ലുവൻസർ (influencer)."""
+    word, _, not_followed_by = word.partition("!")
     exact = word.strip().endswith("=")
     word = " ".join(word.strip().rstrip("=").split())
     if exact or len(word.replace(" ", "")) <= SHORT_NATIVE_KEYWORD:
@@ -62,7 +64,7 @@ def native_pattern(word: str) -> str:
     # காய்ச்சலால், Malayalam കോവിഡ് -> കോവിഡിന്. Without it, the word is a prefix of all its forms.
     while word and unicodedata.name(word[-1], "").endswith("SIGN VIRAMA"):
         word = word[:-1]
-    return word + "*"
+    return word + "*" + (f"!{not_followed_by}" if not_followed_by else "")
 
 
 @dataclass
