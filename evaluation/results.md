@@ -6,10 +6,10 @@ Labelled articles: 120 (missing from the database: 0)
 
 | | Labelled relevant | Labelled irrelevant |
 |---|---|---|
-| **System relevant** | 61 (true positives) | 3 (false positives) |
-| **System irrelevant** | 1 (false negatives) | 55 (true negatives) |
+| **System relevant** | 61 (true positives) | 2 (false positives) |
+| **System irrelevant** | 1 (false negatives) | 56 (true negatives) |
 
-- Precision: 95% · Recall: 98% · F1: 0.97
+- Precision: 97% · Recall: 98% · F1: 0.98
 
 ## On the 61 articles both call relevant
 
@@ -27,7 +27,6 @@ Labelled articles: 120 (missing from the database: 0)
 | location | 84 BSF personnel hospitalised in Imphal after ‘food poisoning’ | Manipur / Imphal West | Manipur / Imphal East |
 | location | Suspected rubella case in Simdega puts health dept on alert; MR vaccination drive intensif | Jharkhand / (state level) | Jharkhand / Simdega |
 | location | City logs 7 new dengue cases | Uttar Pradesh / Prayagraj | Delhi / (state level) [flagged] |
-| relevance | El Niño may increase dengue risk in Kerala, IITM study finds; climate model predicts 16-20 | irrelevant | relevant (outbreak_report) |
 | disease | ‘Rabid’ dog bites 16 in Latehar, victims given anti-rabies shots | Animal bite | Human Rabies |
 | location | Minister Arunraj reviews civic works, dengue preparedness in two zones | Tamil Nadu / Chennai | Tamil Nadu / Tenkasi |
 | location | Cow dies after 'dog bite', sparks rabies scare as 450 consume milk-based prasad in UP | Uttar Pradesh / Gorakhpur | Uttar Pradesh / Kheri |

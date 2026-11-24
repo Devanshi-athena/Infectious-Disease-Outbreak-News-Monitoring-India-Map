@@ -300,7 +300,7 @@ The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 Engl
 
 | | Result |
 |---|---|
-| Relevance: precision / recall / F1 | 95% / 98% / 0.97 |
+| Relevance: precision / recall / F1 | 97% / 98% / 0.98 |
 | Event status | 95% |
 | Disease (at least one correct / all correct) | 98% / 82% |
 | State / district | 96% / 81% |

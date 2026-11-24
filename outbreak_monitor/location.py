@@ -316,10 +316,12 @@ class LocationResolver:
         if before is not None and (before.lower_ in ABBREVIATION_NOT_AFTER
                                    or (before.is_alpha and before.text[:1].isupper())):
             return False                                            # "the MP", "BJP MP", "Arun Raj"
-        if after is not None and after.is_alpha and after.text[:1].isupper() \
+        words = [t for t in doc if t.is_alpha and len(t.text) > 3]
+        title_case = len(words) >= 3 and sum(t.text[:1].isupper() for t in words) >= 0.8 * len(words)
+        if not title_case and after is not None and after.is_alpha and after.text[:1].isupper() \
                 and after.lower_ not in STATE_WORDS_AFTER and after.lower_.rstrip("s") not in PLACE_TYPE_WORDS:
             return False                                            # "Raj Thackeray", "Maha Aarti", "AP Photo"
-        return True
+        return True   # in a Title Case headline ("AP Steps Up Surveillance") a capital says nothing
 
     @staticmethod
     def _looks_like_place(span, doc, place_ents, places) -> bool:

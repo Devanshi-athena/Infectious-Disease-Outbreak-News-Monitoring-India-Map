@@ -1,14 +1,14 @@
 # Evaluation report
 
-Outbreak News Monitor prototype, first evaluated on 3 November 2026 and re-run on 19 November 2026 with the IDSP disease list and the current rules (the figures below). Run `python -m evaluation.evaluate` to reproduce the numbers; the full list of disagreements is in `results.md`.
+Outbreak News Monitor prototype, first evaluated on 3 November 2026, re-run on 19 November 2026 with the IDSP disease list, and again on 24 November 2026 after the review fixes (the figures below). Run `python -m evaluation.evaluate` to reproduce the numbers; the full list of disagreements is in `results.md`.
 
 ## Summary
 
 | What was measured | Result | Articles |
 |---|---|---|
-| Relevance precision (articles marked relevant that really are) | **95%** | 120 |
+| Relevance precision (articles marked relevant that really are) | **97%** | 120 |
 | Relevance recall (relevant articles the system keeps) | **98%** | 120 |
-| Relevance F1 | **0.97** | 120 |
+| Relevance F1 | **0.98** | 120 |
 | Event status (new / suspected / historical / unclear) | 95% (58/61) | 61 |
 | Disease (at least one correct / exactly right) | 98% / 82% | 61 |
 | Inside or outside India | 100% | 61 |
@@ -27,14 +27,13 @@ A separate set of 60 articles labelled for location only (`location_labels.csv`,
 
 ## Where the system disagrees with the labels
 
-**Relevance (4 of 120)**
+**Relevance (3 of 120)**
 
 Counted as relevant, but not:
-- a climate study predicting dengue risk in Kerala;
 - a US student's research on cholera bacteria;
 - a Supreme Court case about a child's death after an anti-malaria tablet.
 
-These headlines name the disease and the text uses words like "outbreaks" or "died", which the rules read as an event.
+These headlines name the disease and the text uses words like "outbreaks" or "died", which the rules read as an event. (The climate study predicting dengue risk in Kerala, counted on 19 November, is now recognised as research.)
 
 Missed:
 - the Balaghat child deaths: the headline doesn't name a disease. (The Majuli prasad and Vandalur zoo stories, missed on 3 November, are now caught.)

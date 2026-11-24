@@ -222,3 +222,8 @@ def test_a_name_followed_by_district_is_the_district(resolver):
     r = locate(resolver, "Three injured in dengue outbreak in Banda district",
                "Three people fell ill with dengue in Banda district's Naraini area.")
     assert (r.state, r.district) == ("Uttar Pradesh", "Banda")
+
+
+def test_abbreviation_in_a_title_case_headline(resolver):
+    r = locate(resolver, "AP Steps Up Dengue Surveillance As Rain Raises Infection Risk")
+    assert r.state == "Andhra Pradesh"
