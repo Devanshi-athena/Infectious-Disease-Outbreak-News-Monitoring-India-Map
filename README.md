@@ -38,6 +38,7 @@ python -m outbreak_monitor.scheduler              # collect now and then every 3
 python -m outbreak_monitor.collector --quick      # one quick run: feeds and news sitemaps since the last run
 python -m outbreak_monitor.collector --backfill   # re-read every source in depth over the last 45 days
 python -m outbreak_monitor.official               # fetch only the official IDSP reports
+python -m outbreak_monitor.official --reparse     # read the stored IDSP weeks again (after a parser change)
 python -m outbreak_monitor.reprocess              # re-classify and re-locate all stored articles
 python -m outbreak_monitor.export_samples         # write sample records and the schema to samples/
 python -m evaluation.evaluate                     # accuracy against the labelled articles

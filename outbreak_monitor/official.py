@@ -5,7 +5,8 @@ Surveillance Programme: unique ID, state, district, disease, cases, deaths, date
 reporting, status and action taken. These are official surveillance records (not news), published
 roughly two months after the reporting week, and are kept in their own table (official_reports).
 
-    python -m outbreak_monitor.official      # fetch the latest weekly reports now
+    python -m outbreak_monitor.official             # fetch the latest weekly reports now
+    python -m outbreak_monitor.official --reparse   # read the stored weeks again (after a parser change)
 """
 
 import io
@@ -18,7 +19,7 @@ from urllib.parse import urljoin
 import pdfplumber
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz, process
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from .config import CONFIG_DIR, _read_yaml, load_disease_config, load_official_sources
 from .db import OfficialReport, get_session_factory, utcnow
@@ -29,9 +30,12 @@ from .logs import setup_logging
 
 log = logging.getLogger(__name__)
 
-REPORT_ID = re.compile(r"^[A-Z]{2}/[A-Z]{2,4}/\d{4}/\d{1,2}/\s*\d+")
+# State/district/year/week/number; the week is sometimes left out in the reports ("KN/BEN/2026/1026")
+REPORT_ID = re.compile(r"^[A-Z]{2}/[A-Z]{2,4}/\d{4}/(?:\d{1,2}/)?\s*\d+")
 WEEK_LINK = re.compile(r"/(\d{4})/week(\d+)_", re.I)
 DISTRICT_MATCH_MIN = 85   # rapidfuzz ratio for spelling variants of district names
+SHORT_FIELDS = {"state", "district", "disease", "cases", "deaths", "onset", "reported", "status"}
+PROSE_WORDS = 4           # a lone continued cell this long is the comment, whatever column it lines up with
 DISEASE_START = re.compile(r"(?i)^(suspected|acute|fever|food|viral|human|chickenpox|measles|dengue|malaria|cholera)$")
 # Column order of the main outbreak table; used only if a table's header cannot be read.
 FIELDS = ["report_id", "state", "district", "disease", "cases", "deaths", "onset", "reported", "status", "action"]
@@ -138,29 +142,36 @@ def parse_report(pdf_bytes: bytes) -> list[dict]:
     A record starts with a row holding its unique ID; that row's cells, in table order, are the
     fields (ID, state, district, disease, cases, deaths, start, reported, status, action) and their
     positions define the record's columns. Following rows without an ID continue the record (a
-    disease name or the action text wrapping onto further lines) and are joined column by column.
+    disease name or the action text wrapping onto further lines) and are joined column by column,
+    also across a page break: the rows at the top of a page's table, before its first ID, continue
+    the last record of the page before (an ID cut by the break, "…/34/140" + "1", is joined too).
     """
     records: list[dict[str, list[str]]] = []
     order = FIELDS  # field order of the last header seen; a table continuing on a new page has no header
+    current, columns = None, {}
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             for table in page.extract_tables():
                 header = _header_columns(table)
                 if header:
                     order = [name for _, name in sorted(header.items())]
+                    current = None  # the rows before the first ID are this table's header
                 else:
                     # Positions differ from page to page: take them from this table's fullest record row.
                     id_rows = [[i for i, c in enumerate(row) if _lines(c)] for row in table
                                if any(_lines(c) for c in row)
                                and REPORT_ID.match(" ".join(_lines(next(c for c in row if _lines(c)))))]
                     header = dict(zip(max(id_rows, key=len), order)) if id_rows else {}
-                current = None
+                    columns = header or columns
+                page_top = True   # rows before this table's first ID: they may finish the last page's record
                 for row in table:
                     cells = [(i, _lines(c)) for i, c in enumerate(row)]
                     cells = [(i, lines) for i, lines in cells if lines]
                     if not cells:
                         continue
-                    if REPORT_ID.match(" ".join(cells[0][1])):
+                    continuation = not REPORT_ID.match(" ".join(cells[0][1]))
+                    if not continuation:
+                        page_top = False
                         columns = header or {i: name for (i, _), name in zip(cells, order)}
                         current = {"report_id": cells[0][1]}
                         cells = cells[1:]
@@ -168,7 +179,13 @@ def parse_report(pdf_bytes: bytes) -> list[dict]:
                         continue  # header rows
                     for index, lines in cells:
                         name = _nearest(columns, index)
-                        if name and name != "report_id":
+                        if continuation and len(cells) == 1 and name in SHORT_FIELDS                                 and (len(" ".join(lines).split()) >= PROSE_WORDS or lines[-1].endswith(".")):
+                            name = "action"   # a line of the comment, carried over a page break
+                        if name == "report_id":
+                            # the end of an ID cut by a page break: a short number at the top of the next page
+                            if page_top and all(line.isdigit() and len(line) <= 3 for line in lines)                                     and current["report_id"][-1][-1:].isdigit():
+                                current["report_id"].extend(lines)
+                        elif name:
                             current.setdefault(name, []).extend(lines)
                     if current not in records:
                         records.append(current)
@@ -229,13 +246,22 @@ class DistrictLocator:
                 self.districts.setdefault(p.state, {})[normalise_name(p.name)] = p
                 for alias in p.aliases:
                     self.districts[p.state].setdefault(alias, p)
+        # Districts renamed since the reference data (config/lgd.yaml: "State|Old name": New name), so that
+        # "Dharashiv" finds Osmanabad
+        for key, target in (_read_yaml(CONFIG_DIR / "lgd.yaml").get("districts") or {}).items():
+            state, _, old = key.partition("|")
+            new = target if isinstance(target, str) else None   # a sub-district of another district: no alias
+            place = self.districts.get(state, {}).get(normalise_name(old))
+            if place and new:
+                self.districts[state].setdefault(normalise_name(new), place)
 
     def locate(self, state: str | None, district: str | None) -> dict:
         state_place = self._state(state) or self._state_of_district(district)
         if not state_place:
             return {"state": state, "district": district, "latitude": None, "longitude": None,
                     "location_level": None, "location_confidence": "none"}
-        result = {"state": state_place.name, "district": None, "latitude": state_place.latitude,
+        # A district that cannot be found keeps the report's own name (the record is placed at state level)
+        result = {"state": state_place.name, "district": district, "latitude": state_place.latitude,
                   "longitude": state_place.longitude, "location_level": "state", "location_confidence": "low"}
         names = self.districts.get(state_place.name, {})
         place, confidence = self._district(names, district)
@@ -315,6 +341,7 @@ class DiseaseMap:
         """'Malaria (P. falciparum)' -> 'malaria', 'Suspected Typhoid' -> 'typhoid'."""
         term = re.sub(r"\(.*?\)", " ", term.lower())
         term = re.sub(r"\bsuspected\b", " ", term)
+        term = re.sub(r"[,;]", " ", term)
         return re.sub(r"\s+", " ", term).strip(" .,-")
 
     def diseases(self, raw: str | None) -> list[str]:
@@ -326,22 +353,30 @@ class DiseaseMap:
         return [d for d in found if not self.superseded_by.get(d, set()) & set(found)]
 
 
-def collect_official(session_factory=None) -> dict:
-    """Fetch the configured official reports that are not stored yet. Returns statistics."""
+def collect_official(session_factory=None, reparse: bool = False) -> dict:
+    """Fetch the configured official reports that are not stored yet (reparse: read the stored weeks again
+    and rebuild their records, after a parser fix). Weeks are read oldest first, so an outbreak reported again
+    in a later week keeps the later figures. Returns statistics."""
     session_factory = session_factory or get_session_factory()
     disease_map = DiseaseMap()
     locator = DistrictLocator()
     stats = {"reports_read": 0, "records_new": 0, "records_updated": 0, "errors": []}
     for source in (s for s in load_official_sources() if s.enabled):
         try:
-            weekly = list_weekly_reports(source.listing)[: source.weeks]
+            listed = list_weekly_reports(source.listing)
+            weekly = listed[: source.weeks]
         except Exception as exc:
             stats["errors"].append({"source": source.name, "url": source.listing, "error": f"{type(exc).__name__}: {exc}"})
             log.warning("FAILED %s listing: %s", source.name, exc)
             continue
         with session_factory() as session:
+            if reparse:   # every stored week (and the latest ones) is read again and its records rebuilt
+                stored = set(session.scalars(select(OfficialReport.report_url).distinct()))
+                weekly = [w for w in listed if w in weekly or w.url in stored]
+                session.execute(delete(OfficialReport).where(OfficialReport.report_url.in_([w.url for w in weekly])))
+                session.commit()
             done = set(session.scalars(select(OfficialReport.report_url).distinct()))
-            for report in weekly:
+            for report in reversed(weekly):   # oldest first
                 if report.url in done:
                     continue
                 try:
@@ -380,8 +415,12 @@ def collect_official(session_factory=None) -> dict:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Fetch the IDSP weekly outbreak reports.")
+    parser.add_argument("--reparse", action="store_true", help="read the stored weeks again and rebuild their records")
+    args = parser.parse_args()
     setup_logging()
-    log.info("Official reports: %s", collect_official())
+    log.info("Official reports: %s", collect_official(reparse=args.reparse))
 
 
 if __name__ == "__main__":

@@ -214,3 +214,49 @@ def test_quick_gate_gives_the_same_matches():
     gate, m.gate = m.gate, None
     assert gated == [m.match(t) for t in texts]
     assert gate.search("Cricket news today") is None   # "new" is a whole word in its keyword, not "news"
+
+
+def test_measles_keyword_does_not_match_govardhan():
+    from outbreak_monitor.config import load_disease_config
+    from outbreak_monitor.matcher import KeywordMatcher
+    m = KeywordMatcher(load_disease_config().diseases)
+    assert m.match("गोवरच्या रुग्णांची संख्या वाढली") == ["Measles"]        # measles cases rise (Marathi)
+    assert m.match("गोवर्धन में नेत्र शिविर, 528 मरीजों की जांच") == []     # eye camp in Govardhan (Hindi)
+    assert m.match("गोवर्धनपुर गांव में सड़क हादसा") == []
+
+
+@pytest.mark.parametrize("headline,body,expected", [
+    ("5 things people should know about dengue", "Dengue spreads through mosquitoes. Dengue fever causes pain.",
+     ("irrelevant", "awareness")),
+    ("Why are dengue cases rising in Delhi?", "Dengue cases have risen. Dengue experts explain why.",
+     ("irrelevant", "awareness")),
+    ("Measles vaccine drive: 5,000 children vaccinated in Pune", "5,000 children were vaccinated against measles.",
+     ("irrelevant", "research")),
+    ("FIR against civil surgeon over dengue kit purchase", "The civil surgeon bought dengue kits. Dengue funds were misused.",
+     ("irrelevant", "other")),
+    ("BJP hits back: 'Sanatan is dengue-malaria' remark", "BJP hit back at the dengue remark.", ("irrelevant", "other")),
+    ("Delhi logs 300 dengue cases this week: is it the peak?", "Delhi logged 300 dengue cases.",
+     ("relevant", "outbreak_report")),
+    ("Dengue hits Kanpur: hospitals full", "Dengue cases rose to 300 in Kanpur.", ("relevant", "outbreak_report")),
+    ("40 children fall ill after mid-day meal; dengue suspected", "Dengue is suspected after 40 children fell ill.",
+     ("relevant", "outbreak_report")),
+])
+def test_event_words_and_counts(classify, headline, body, expected):
+    r = classify(headline, body)
+    assert (r.relevance, r.content_type) == expected
+
+
+@pytest.mark.parametrize("headline,body", [
+    ("'How many more lives will be lost?' - 4-year-old child dies of dengue", "The child died of dengue on Monday."),
+    ("Dengue infection confirmed in 3 areas of Pune: how it spreads, symptoms", "Dengue was confirmed in 3 areas."),
+    ("Dengue cases in Bhopal: elderly men among those showing severe signs", "Dengue cases were found in Bhopal."),
+    ("Teenager dies of dengue a month after falling ill: what you should know", "The teenager died of dengue."),
+])
+def test_reports_written_like_explainers_stay_reports(classify, headline, body):
+    r = classify(headline, body)
+    assert (r.relevance, r.content_type) == ("relevant", "outbreak_report")
+
+
+def test_dead_alone_does_not_make_a_report(classify):
+    r = classify("Dead mosquitoes and dengue: can a dead mosquito still spread dengue?", "Dengue spreads by bites.")
+    assert r.relevance == "irrelevant"

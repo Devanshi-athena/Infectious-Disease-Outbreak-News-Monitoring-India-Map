@@ -78,8 +78,8 @@ def test_district_location(locator):
         ("Kerala", "Wayanad", "district", "high")
     assert locator.locate("Chhattisgarh", "Balodabazar")["district"] != "Balod"   # no partial matching
     assert locator.locate(None, "Wayanad")["state"] == "Kerala"                  # state from a unique district
-    unknown = locator.locate("Karnataka", "Nowhere Nagar")
-    assert (unknown["location_level"], unknown["district"]) == ("state", None)
+    unknown = locator.locate("Karnataka", "Nowhere Nagar")      # placed at state level, the name is kept
+    assert (unknown["location_level"], unknown["district"]) == ("state", "Nowhere Nagar")
     assert locator.locate("Atlantis", "Nowhere")["location_level"] is None
 
 
@@ -146,3 +146,53 @@ def test_disease_map_maps_only_listed_terms():
                            ("Fever with Rash", "Fever with rash"), ("West Nile Fever", "West Nile Virus")):
         assert m.diseases(term) == [expected], term
     assert m.diseases("Avian Influenza") == []                                   # not an IDSP condition
+
+
+
+def test_renamed_districts_are_found(locator):
+    for state, district, reference in [("Maharashtra", "Dharashiv", "Osmanabad"), ("Assam", "Sribhumi", "Karimganj"),
+                                       ("Maharashtra", "Ahilyanagar", "Ahmadnagar")]:
+        loc = locator.locate(state, district)
+        assert (loc["district"], loc["location_level"]) == (reference, "district")
+
+
+def test_a_record_continues_across_a_page_break(monkeypatch):
+    header = [["Unique ID", "Name of State/UT", "Name of District", "Disease/ Illness", "No. of Cases",
+               "No. of Deaths", "Date of Start of Outbreak", "Date of Reporting", "Current Status",
+               "Comments/ Action Taken"]]
+    page1 = header + [["MH/PUN/2026/34/140", "Maharashtra", "Pune", "Chickenpo", "12", "0", "20-08-2026",
+                       "21-08-2026", "Under Surveillance", "Cases reported from Village Pimpale Jagtap,"]]
+    page2 = [["1", None, None, "x", None, None, None, None, None, "Taluka Shirur. Samples sent to NIV."],
+             ["KL/WAY/2026/34/1367", "Kerala", "Wayanad", "Acute Diarrhoeal Disease", "17", "0", "06-08-2026",
+              "07-08-2026", "Under Control", "Cases of loose motion."]]
+    pages = [SimpleNamespace(extract_tables=lambda t=t: [t]) for t in (page1, page2)]
+    pdf = MagicMock()
+    pdf.__enter__.return_value = SimpleNamespace(pages=pages)
+    monkeypatch.setattr(official.pdfplumber, "open", lambda f: pdf)
+    first, second = official.parse_report(b"")
+    assert first["report_id"] == "MH/PUN/2026/34/1401"
+    assert first["disease_raw"] == "Chickenpox"
+    assert first["action_taken"] == "Cases reported from Village Pimpale Jagtap, Taluka Shirur. Samples sent to NIV."
+    assert (second["report_id"], second["state"]) == ("KL/WAY/2026/34/1367", "Kerala")
+
+
+def test_prose_carried_over_a_page_break_goes_to_the_comment(monkeypatch):
+    header = [["Unique ID", "Name of State/UT", "Name of District", "Disease/ Illness", "No. of Cases",
+               "No. of Deaths", "Date of Start of Outbreak", "Date of Reporting", "Current Status",
+               "Comments/ Action Taken"]]
+    page1 = header + [["WB/BAN/2026/29/1189", "West Bengal", "Bankura", "Hepatitis A", "9", "0", "10-07-2026",
+                       "12-07-2026", "Under Control", "Cases of fever reported from Village M. Ages 4 to"]]
+    page2 = [[None, None, None, "45 years. 8 serum samples were", None, None, None, None, None, None],
+             [None, None, None, "collected and sent to Kolkata.", None, None, None,
+              None, None, None]]
+    pages = [SimpleNamespace(extract_tables=lambda t=t: [t]) for t in (page1, page2)]
+    pdf = MagicMock()
+    pdf.__enter__.return_value = SimpleNamespace(pages=pages)
+    monkeypatch.setattr(official.pdfplumber, "open", lambda f: pdf)
+    [r] = official.parse_report(b"")
+    assert r["disease_raw"] == "Hepatitis A"
+    assert r["action_taken"].endswith("Ages 4 to 45 years. 8 serum samples were collected and sent to Kolkata.")
+
+
+def test_report_id_without_week_starts_a_new_record():
+    assert official.REPORT_ID.match("KN/BEN/2026/1026") and official.REPORT_ID.match("JH/SIM/2026/26/1025")

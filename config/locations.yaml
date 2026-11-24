@@ -20,6 +20,13 @@ abbreviations:
   Guj: Gujarat
   K'taka: Karnataka
 
+# Abbreviations that are also something else ("MP" a Member of Parliament, "AP" the Associated Press, "Raj"
+# and "Maha" parts of names: Raj Thackeray, Maha Aarti, Maha Vikas Aghadi). They count as the state only when
+# nothing around them says otherwise: not inside a person's name or brackets, not after "the", "a" or a party
+# name, and not followed by a capitalised name ("MP Arun Kumar", "AP Photo"). "in MP", "MP: 3 die",
+# "MP govt", "AP CM", "MP districts" still count.
+ambiguous_abbreviations: [AP, MP, Raj, Maha]
+
 # Extra spellings (case-insensitive) -> reference place name. If the name exists in several states,
 # give "Name, State".
 aliases:

@@ -1,3 +1,5 @@
+import pytest
+
 from unittest.mock import MagicMock
 
 from outbreak_monitor.db import GeocodeCache, get_session_factory
@@ -185,3 +187,31 @@ def test_only_place_like_names_are_geocoded(resolver):
     locate(r, "Dengue cases rise in Pune", "Dr Sharma said 40 dengue cases were found in Sept. "
            "IgM tests confirmed dengue in Kothrud.")
     assert [c[0] for c in geo.calls] == ["Kothrud"]
+
+
+@pytest.mark.parametrize("headline,state", [
+    ("Dengue cases rise in MP; 3 deaths in Indore", "Madhya Pradesh"),
+    ("MP: 3 die of dengue in Bhopal district", "Madhya Pradesh"),
+    ("MP govt orders dengue survey", "Madhya Pradesh"),
+    ("AP CM reviews dengue situation", "Andhra Pradesh"),
+    ("Raj: 12 dengue deaths in Jaipur", "Rajasthan"),
+    ("BJP MP hits back at minister over dengue", None),                      # Member of Parliament
+    ("Raj Thackeray pays tribute; dengue curbs recalled", None),             # a person
+    ("We are trying to find a vaccine for dengue: Minister Arun Raj", None),
+    ("Maha Aarti held; dengue awareness drive", None),
+    ("Dengue outbreak death toll crosses 5,000 in Africa (AP)", None),       # Associated Press
+])
+def test_ambiguous_abbreviations_need_context(resolver, headline, state):
+    assert locate(resolver, headline).state == state
+
+
+@pytest.mark.parametrize("headline,place", [
+    ("Dengue cases rise in Kochi", ("India", "Kerala")),                     # also a prefecture of Japan
+    ("Dengue outbreak in Kochi, Japan prefecture alarms officials", ("Japan", None)),
+    ("Dengue cases in Punjab cross 2,000", ("India", "Punjab")),             # also a province of Pakistan
+    ("Dengue cases rise in Mon district", ("India", "Nagaland")),            # also a state of Myanmar
+    ("Congo's dengue outbreak death toll crosses 5,000", ("Democratic Republic of the Congo", None)),
+])
+def test_names_shared_with_foreign_places(resolver, headline, place):
+    r = locate(resolver, headline)
+    assert (r.country, r.state) == place

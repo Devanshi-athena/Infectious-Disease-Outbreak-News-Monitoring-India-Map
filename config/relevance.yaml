@@ -30,7 +30,10 @@ event:
   - outbreak*
   - cluster*
   - spike*
-  - surge*
+  - surge
+  - surges
+  - surged
+  - surging
   - upsurge
   - epidemic
   - hotspot*
@@ -51,6 +54,48 @@ event:
   - spreading
   - hits
   - grips
+
+# In a headline that also reads like a study, an explainer or a question ("Teenager dies of rabies: what
+# you should know"), these mark it as a report all the same, as does a count ("12 new cases"). Weaker event
+# words ("cases", "surge", "spreading", "outbreak") do not: "Why are dengue cases rising?" is an explainer.
+headline_event:
+  - die
+  - dies
+  - died
+  - death of
+  - deaths
+  - killed
+  - kills
+  - claims lives
+  - claimed lives
+  - succumb*
+  - tested positive
+  - test positive
+  - confirmed
+  - detected
+  - first case
+  - positive case*
+  - fell ill
+  - falls ill
+  - hospitalised
+  - hospitalized
+  - cases in
+  - cases at
+  - cases reported
+  - new cases
+  - fresh cases
+  - surge in cases
+  - spike in cases
+  - rise in cases
+  - increase in cases
+
+# Phrases that contain an event word but are not events: removed before looking for event cues.
+not_event:
+  - hits back
+  - hit back
+  - hits out
+  - death anniversary
+  - surgeon*
 
 # Signs of a public-health response to disease in an area.
 response:
@@ -215,6 +260,8 @@ past_event:
   - covid relief
   - covid aid
   - covid compensation
+  - post-covid
+  - post covid
 
 # A disease named only as a comparison does not count as mentioned: "Ebola is like Covid pandemic",
 # "worse than dengue". The word must come right before the disease name (an optional "the"/"a" between).

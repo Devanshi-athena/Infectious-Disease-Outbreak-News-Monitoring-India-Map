@@ -241,7 +241,11 @@ def load_foreign(path: Path = FOREIGN_FILE) -> dict[str, str]:
         names = {normalise_name(r["name"]): r["country"] for r in csv.DictReader(f)}
     names.update({"us": "United States", "usa": "United States", "u s": "United States", "america": "United States",
                   "uk": "United Kingdom", "britain": "United Kingdom", "england": "United Kingdom",
-                  "uae": "United Arab Emirates", "dhaka": "Bangladesh"})
+                  "uae": "United Arab Emirates", "dhaka": "Bangladesh",
+                  # short and common forms the reference data lacks
+                  "congo": "Democratic Republic of the Congo", "dr congo": "Democratic Republic of the Congo",
+                  "drc": "Democratic Republic of the Congo", "korea": "South Korea", "burma": "Myanmar",
+                  "gaza": "Palestine", "palestine": "Palestine", "siberia": "Russia", "irkutsk": "Russia"})
     return names
 
 

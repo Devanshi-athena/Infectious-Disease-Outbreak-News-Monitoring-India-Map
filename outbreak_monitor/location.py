@@ -66,6 +66,11 @@ PERSON_CUES = {"said", "says", "told", "added", "dr", "mr", "mrs", "ms", "shri",
                "mp", "collector", "officer", "commissioner", "secretary", "director", "chairman", "doctor", "by"}
 PLACE_TYPE_WORDS = {"district", "city", "town", "village", "state", "municipal", "municipality", "corporation",
                     "division", "block", "taluk", "tehsil", "mandal", "nagar", "road", "cantonment", "rural", "urban"}
+# Around an ambiguous abbreviation ("MP", "AP", "Raj", "Maha"): words that make it the state, or not
+LOCATIVE_WORDS = {"in", "at", "from", "near", "across", "around", "to", "of", "within", "throughout"}
+ABBREVIATION_NOT_AFTER = {"a", "an", "the", "local", "party", "former", "sitting", "our", "his", "her", "their"}
+STATE_WORDS_AFTER = {"govt", "government", "health", "police", "cm", "minister", "ministers", "assembly", "cabinet",
+                     "high", "hc", "board", "dept", "department", "news", "election", "elections", "bypoll", "bypolls"}
 PLACE_BEFORE = re.compile(r"\b(in|at|from|near|of|across|around|to)\s*$", re.I)
 PLACE_AFTER = re.compile(r"^\s*(village|town|taluk|tehsil|block|mandal|district|city|area|panchayat)\b", re.I)
 # Names worth sending to the geocoder: capitalised words only (no digits or codes like "H1N1", "IgM").
@@ -170,6 +175,7 @@ class LocationResolver:
             self.by_name.pop(word, None)
         self.abbreviations = {abbr: self.states[name] for abbr, name in (config.get("abbreviations") or {}).items()
                               if name in self.states}
+        self.ambiguous_abbreviations = set(config.get("ambiguous_abbreviations") or [])
 
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
         names = [n for n in self.by_name if len(n) >= 3] + extra_patterns
@@ -226,9 +232,16 @@ class LocationResolver:
                 locative = bool(PLACE_BEFORE.search(doc.text[:start_char]) or PLACE_AFTER.match(doc.text[end_char:]))
             mentions.append(Mention(text, sentence, w, places, r, foreign, locative=locative, start=start_char))
 
-        def foreign_name(text):
+        def foreign_name(text, places=()):
+            """The foreign country a name stands for, if any. A name that is also an Indian state, district or
+            large town ("Kochi", "Mon", "Punjab") is taken as Indian unless the country is named in the same
+            sentence ("Kochi, Japan")."""
             norm = normalise_name(text)
-            return None if norm in GENERIC_WORDS else self.foreign.get(norm)
+            country = None if norm in GENERIC_WORDS else self.foreign.get(norm)
+            if country and any(p.kind != "town" or p.population >= LARGE_TOWN for p in places) \
+                    and country.lower() not in doc.text.lower():
+                return None
+            return country
 
         # A reference name longer than an entity inside it wins ("Kotputli-Behror" district, not the towns
         # "Kotputli" and "Behror" the model found).
@@ -247,8 +260,8 @@ class LocationResolver:
                 add(ent.text, ent.start_char, [], mention_role="country")
             else:
                 stripped = re.sub(r"\s+(district|city|town|village|state)$", "", name, flags=re.I)
-                add(ent.text, ent.start_char, self._candidates(name) or self._candidates(stripped),
-                    foreign=foreign_name(name))
+                places = self._candidates(name) or self._candidates(stripped)
+                add(ent.text, ent.start_char, places, foreign=foreign_name(name, places))
             taken.update(range(ent.start, ent.end))
 
         # 2. Reference names in the remaining text (longest match first, no overlaps).
@@ -267,11 +280,13 @@ class LocationResolver:
             if all(p.kind == "town" for p in places) and not self._looks_like_place(span, doc, place_ents, places):
                 continue
             taken.update(range(start, end))
-            add(span.text, span.start_char, places, foreign=foreign_name(span.text))
+            add(span.text, span.start_char, places, foreign=foreign_name(span.text, places))
 
         # 3. Case-sensitive abbreviations ("UP", "J&K").
         for token in doc:
             if token.text in self.abbreviations and token.i not in taken:
+                if token.text in self.ambiguous_abbreviations and not self._abbreviation_is_state(doc, token, person):
+                    continue
                 add(token.text, token.idx, [self.abbreviations[token.text]])
 
         # 4. "Tizit village", "Bela mandal": a local place the model and reference data may not know.
@@ -281,6 +296,25 @@ class LocationResolver:
                 taken.update(t.i for t in span)
                 add(match.group(1), match.start(1), [], locative=True)
         return mentions
+
+    @staticmethod
+    def _abbreviation_is_state(doc, token, person: list[tuple[int, int]]) -> bool:
+        """Whether an ambiguous abbreviation ("MP", "AP", "Raj", "Maha") stands for the state here."""
+        if any(s <= token.idx < e for s, e in person):
+            return False                                            # "Raj Thackeray", "Arun Raj"
+        before = doc[token.i - 1] if token.i > 0 else None
+        after = doc[token.i + 1] if token.i + 1 < len(doc) else None
+        if before is not None and before.lower_ in LOCATIVE_WORDS:
+            return True                                             # "in MP", "across MP"
+        if before is not None and before.text == "(" and after is not None and after.text == ")":
+            return False                                            # "(AP)"
+        if before is not None and (before.lower_ in ABBREVIATION_NOT_AFTER
+                                   or (before.is_alpha and before.text[:1].isupper())):
+            return False                                            # "the MP", "BJP MP", "Arun Raj"
+        if after is not None and after.is_alpha and after.text[:1].isupper() \
+                and after.lower_ not in STATE_WORDS_AFTER and after.lower_.rstrip("s") not in PLACE_TYPE_WORDS:
+            return False                                            # "Raj Thackeray", "Maha Aarti", "AP Photo"
+        return True
 
     @staticmethod
     def _looks_like_place(span, doc, place_ents, places) -> bool:

@@ -404,7 +404,7 @@ diseases:
     search_terms: ["measles"]
     native_keywords:
       hi: ["खसरा"]
-      mr: ["गोवर"]
+      mr: ["गोवर!्"]   # not followed by ्: गोवर्धन (Govardhan) is a name
       gu: ["ઓરી"]
       bn: ["হাম"]
       ta: ["தட்டம்மை"]

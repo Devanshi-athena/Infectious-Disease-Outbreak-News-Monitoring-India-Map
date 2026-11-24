@@ -32,7 +32,7 @@ from .matcher import KeywordMatcher, compile_phrases
 from .processing import split_paragraphs
 
 CUE_KINDS = ("event", "response", "suspected", "confirmed", "research", "awareness", "historical", "current",
-             "crime", "past_event", "comparison")
+             "crime", "past_event", "comparison", "not_event", "headline_event")
 LEAD_SENTENCES = 3
 MAX_TEXT_CHARS = 20_000
 MIN_SECONDARY_EVENTS = 2   # outbreak sentences needed for a disease not named in the headline
@@ -49,12 +49,17 @@ _ILL = (r"(?:hospitali[sz]ed|admitted|infected|tested positive|test positive|fel
         r"taken ill|died|dead|affected)")
 # "40 new dengue cases", "2,500 chickens", "87 jawans hospitalised", "tally rises to 70",
 # "count crossed 500", "cases of X in Y jump 31%"
-CASE_COUNT = re.compile(
-    rf"{_NUMBER}\s+(?:[\w-]+\s+){{0,3}}?{_COUNTED}\b"
-    rf"|{_NUMBER}\s+(?:[\w-]+\s+){{0,2}}?{_ILL}\b"
-    rf"|\b(?:tally|toll|count|cases)\s+(?:[\w-]+\s+){{0,3}}?(?:to|at|of|crosse?d?|reache?d?|touche?d?)\s+\d"
-    rf"|\bcases\s+(?:[\w,'’-]+\s+){{0,6}}?{_TREND}",
-    re.IGNORECASE)
+# Numbers that count something else: "5 things people should know", "10 tips", and people who were
+# vaccinated or screened rather than taken ill.
+_NOT_A_COUNT = (r"(?!\s+(?:things|tips|ways|facts|signs|symptoms|reasons|myths|questions|foods|habits|steps|mistakes|"
+                r"rules|precautions|remedies|dos|don'?ts)\b)")
+_NOT_ILL = (r"(?!\s+(?:were\s+|have\s+been\s+|had\s+been\s+)?(?:vaccinated|immuni[sz]ed|inoculated|screened|"
+            r"examined|registered|enrolled|trained|benefit\w*|covered|given)\b)")
+_NUMBERED = (rf"{_NUMBER}{_NOT_A_COUNT}\s+(?:[\w-]+\s+){{0,3}}?{_COUNTED}\b{_NOT_ILL}"
+             rf"|{_NUMBER}\s+(?:[\w-]+\s+){{0,2}}?{_ILL}\b"
+             rf"|\b(?:tally|toll|count|cases)\s+(?:[\w-]+\s+){{0,3}}?(?:to|at|of|crosse?d?|reache?d?|touche?d?)\s+\d")
+CASE_COUNT = re.compile(rf"{_NUMBERED}|\bcases\s+(?:[\w,'’-]+\s+){{0,6}}?{_TREND}", re.IGNORECASE)
+NUMBERED_COUNT = re.compile(_NUMBERED, re.IGNORECASE)   # a count with a number in it (not just "cases rising")
 YEAR = re.compile(r"\b(19[5-9]\d|20\d\d)\b")
 
 _nlp = None
@@ -101,7 +106,12 @@ class RelevanceClassifier:
                           text, flags=re.IGNORECASE)
         return {disease for disease, _ in self.matcher.mentions(text)}
 
+    def _without_non_events(self, text: str) -> str:
+        """The text without phrases that only look like events ("BJP hits back", "death anniversary", "surgeon")."""
+        return self.cues["not_event"].sub(" ", text) if self.cues["not_event"] else text
+
     def _event(self, text: str) -> str | None:
+        text = self._without_non_events(text)
         m = CASE_COUNT.search(text)
         return m.group(0) if m else self._cue("event", text)
 
@@ -148,10 +158,14 @@ class RelevanceClassifier:
         if cue := self._cue("past_event", headline):
             return Classification("irrelevant", "other", reasons=reasons + [f"past-event headline: '{cue}'"])
         head_event = self._event(headline)
-        if not head_event and (cue := self._cue("research", headline)):
+        # A study, explainer or question headline still counts as a report with a count ("12 new cases") or a
+        # strong event word ("dies", "confirmed", "cases in Pune"); weaker words ("Why are dengue cases rising?",
+        # "Should you worry about a winter surge?") do not.
+        head_count = NUMBERED_COUNT.search(headline) or self._cue("headline_event", self._without_non_events(headline))
+        if not head_count and (cue := self._cue("research", headline)):
             return Classification("irrelevant", "research", reasons=reasons + [f"research headline: '{cue}'"])
         question = "?" in headline and not self._cue("response", headline) and "question headline"
-        if not head_event and (cue := self._cue("awareness", headline) or question):
+        if not head_count and (cue := self._cue("awareness", headline) or question):
             return Classification("irrelevant", "awareness", reasons=reasons + [f"awareness headline: '{cue}'"])
 
         # The headline decides between report and response; the body is the fallback.
