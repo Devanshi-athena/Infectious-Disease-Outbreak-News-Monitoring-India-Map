@@ -576,8 +576,7 @@ sources:
   - name: Kannada Prabha
     language: kn
     domain: www.kannadaprabha.com
-    rss:
-      - https://kannadaprabha.com/feed
+    # the RSS feed was removed (404 since November 2026); the news sitemap still lists every article
     sitemaps:
       - https://www.kannadaprabha.com/news_sitemap.xml
 
