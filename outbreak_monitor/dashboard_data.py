@@ -1,4 +1,5 @@
-"""Data behind the dashboard (app.py): loading articles, filters, story markers and review updates.
+"""Data behind the dashboard (app.py): loading articles and official records, filters, tables, alerts and review
+updates. The map's own data is in map_view.py.
 Kept free of Streamlit so it can be tested on its own."""
 
 import html
@@ -193,30 +194,6 @@ def not_on_map(df: pd.DataFrame) -> pd.DataFrame:
     return rows.assign(why_unmapped=why).sort_values("published_at", ascending=False)
 
 
-@dataclass
-class StoryMarker:
-    latitude: float
-    longitude: float
-    event_status: str | None
-    headline: str
-    popup_html: str
-    article_ids: list[int]
-
-
-def story_markers(df: pd.DataFrame) -> list[StoryMarker]:
-    """One marker per story (the same report from several publishers), placed at its location.
-    Only reports located in India with coordinates are mapped."""
-    if df.empty:
-        return []
-    located = df[(df["country"] == "India") & df["latitude"].notna() & df["longitude"].notna()]
-    markers = []
-    for _, group in located.sort_values("published_at").groupby("story_id", sort=False):
-        first = group.iloc[0]
-        markers.append(StoryMarker(float(first["latitude"]), float(first["longitude"]), first["event_status"],
-                                   first["headline"], popup_html(group), [int(i) for i in group["article_id"]]))
-    return markers
-
-
 def href(url) -> str:
     """A link target for a card: escaped, and only http(s), so that a stored URL can never run script
     ("javascript:")."""
@@ -241,37 +218,6 @@ def original_headline(row) -> str | None:
     """The headline as published, for an article that was translated (None for English articles)."""
     value = row.get("headline_original") if hasattr(row, "get") else getattr(row, "headline_original", None)
     return value if isinstance(value, str) and value else None
-
-
-def popup_html(group: pd.DataFrame) -> str:
-    """Card-style popup for one story. Every value comes from external sites, so everything is escaped."""
-    first = group.iloc[0]
-    status = first["event_status"] if first["event_status"] in EVENT_COLOURS else "unclear"
-    original = original_headline(first)
-    original_html = (f"<div style='color:#5A687D;font-size:13px;margin:-4px 0 8px 0'>{_esc(original)}"
-                     f"<span style='font-size:11px'> · {_esc(first['language_name'])}, translated</span></div>"
-                     if original else "")
-    diseases = ", ".join(sorted({d for ds in group["diseases"] for d in ds})) or "—"
-    published = published_ist(first["published_at"])
-    review = (" · <span style='color:#D64545;font-weight:600'>location needs review</span>"
-              if bool(first["location_review"]) else "")
-    sources = "".join(
-        f"<li style='margin:2px 0'><a href=\"{href(r.article_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
-        f"style='color:#1554A6;font-weight:500'>{_esc(r.source_name)}</a></li>" for r in group.itertuples())
-    return (
-        "<div style=\"font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:13px;color:#172033;width:320px\">"
-        f"<div style='background:{EVENT_COLOURS[status]};color:#fff;padding:6px 12px;border-radius:8px 8px 0 0;font-weight:600;"
-        f"font-size:11px;letter-spacing:.06em;text-transform:uppercase'>{_esc(diseases)} · {EVENT_LABELS[status]}</div>"
-        "<div style='padding:10px 12px 6px 12px'>"
-        f"<div style=\"font-size:15px;font-weight:600;line-height:1.35;margin-bottom:8px\">"
-        f"{_esc(first['headline'])}</div>{original_html}"
-        f"<div style='margin:2px 0'>📍 {_esc(first['place'])}</div>"
-        f"<div style='color:#5A687D;font-size:12px;margin:0 0 4px 20px'>{_esc(first['location_level'])} level · "
-        f"{_esc(first['location_confidence'])} confidence{review}"
-        + (f" · {_esc(lgd_label(first))}" if lgd_label(first) else "") + "</div>"
-        f"<div style='margin:2px 0'>📅 {published.strftime('%d %b %Y, %H:%M IST') if published else '—'}</div>"
-        f"<div style='margin-top:8px;color:#5A687D;font-size:11px;letter-spacing:.06em;text-transform:uppercase'>"
-        f"Reported by</div><ul style='margin:2px 0 6px 18px;padding:0'>{sources}</ul></div></div>")
 
 
 def latest_reports(df: pd.DataFrame, limit: int = 6) -> list[dict]:
@@ -348,28 +294,6 @@ def filter_official(df: pd.DataFrame, diseases: list[str], states: list[str]) ->
     return df[keep]
 
 
-def official_popup_html(r) -> str:
-    """Popup for one official record. Values come from a downloaded PDF, so everything is escaped."""
-    def day(d):
-        return d.strftime("%d %b %Y") if isinstance(d, date) else "—"
-    deaths = "" if r.deaths is None or pd.isna(r.deaths) else f" · {int(r.deaths)} death(s)"
-    cases = "—" if r.cases is None or pd.isna(r.cases) else f"{int(r.cases)}"
-    place = ", ".join(p for p in (r.district, r.state) if isinstance(p, str)) or "—"
-    return (
-        "<div style=\"font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:13px;color:#172033;width:320px\">"
-        f"<div style='background:{OFFICIAL_COLOUR};color:#fff;padding:6px 12px;border-radius:8px 8px 0 0;font-weight:600;"
-        "font-size:11px;letter-spacing:.06em;text-transform:uppercase'>Official report · IDSP</div>"
-        "<div style='padding:10px 12px 6px 12px'>"
-        f"<div style=\"font-size:15px;font-weight:600;margin-bottom:8px\">"
-        f"{_esc(r.disease_raw)}: {cases} case(s){deaths}</div>"
-        f"<div style='margin:2px 0'>📍 {_esc(place)}</div>"
-        f"<div style='margin:2px 0'>📅 Started {day(r.onset_date)} · reported {day(r.reported_date)}</div>"
-        f"<div style='margin:2px 0'>Status: {_esc(r.status)}</div>"
-        f"<div style='margin:6px 0 2px 0;color:#5A687D;font-size:12px'>ID {_esc(r.report_id)} · {_esc(r.week_label)}"
-        f" · <a href=\"{href(r.report_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
-        "style='color:#1554A6;font-weight:500'>weekly report (PDF)</a></div></div></div>")
-
-
 # ---------------------------------------------------------------- outbreaks (grouped reports) and alerts
 
 ALERT_WINDOW_DAYS = 7        # "this week": the last 7 days up to the latest report
@@ -390,8 +314,9 @@ def _report_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def outbreak_events(df: pd.DataFrame) -> pd.DataFrame:
-    """Reports of the same disease in the same place (district, or the state when no district is named) in the
-    same calendar week, grouped as one outbreak, whatever the source or language. Newest first."""
+    """Relevant reports of the same disease in the same place (district, or the state when no district is named) in
+    the same calendar week, grouped as one outbreak, whatever the source or language. Newest first. Every relevant
+    report counts, including responses and past outbreaks; event_status shows the most serious one in the group."""
     rows = _report_rows(df)
     if rows.empty:
         return pd.DataFrame()

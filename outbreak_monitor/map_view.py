@@ -316,6 +316,7 @@ class IndiaMap(MacroElement):
   var map = {{ this._parent.get_name() }};
   var D = {{ this.data }};
   var topo = D.topo, mode = D.mode, el = map.getContainer();
+  var selected = null;   // the open district (LGD code), if any
   var primary = mode === 'official' ? D.official : D.news;           // shading and dots
   var secondary = mode === 'both' ? D.official : null;              // green squares beside them
   var shades = D.shades[mode === 'official' ? 'official' : 'news'], breaks = D.breaks;
@@ -528,9 +529,10 @@ class IndiaMap(MacroElement):
 
   // A selected district: it pops out (the rest of India dims), the map zooms to it, and its reports appear as
   // dots at their places (green squares: IDSP records). Clicking outside it, or closing the panel, goes back.
-  var selected = null, selLayer = L.layerGroup().addTo(map), dots = L.layerGroup().addTo(map);
+  var selLayer = L.layerGroup().addTo(map), dots = L.layerGroup().addTo(map);
   var selRenderer = L.canvas({pane: 'sel', padding: 0.5});   // canvas: the IDSP stripe pattern draws on it
-  var rank = {'new': 0, 'suspected': 1, 'unclear': 2, 'historical': 3};
+  var rank = {};   // most serious status first
+  D.statusOrder.forEach(function (s, i) { rank[s] = i; });
   function addDots(items, official, district) {
     var groups = {};
     (items || []).forEach(function (it) {
@@ -625,7 +627,7 @@ class IndiaMap(MacroElement):
         'border:2px solid ' + D.alertColour + ';border-radius:2px"></span>Reports rising (last 7 days)</div>';
     if (secondary) h += '<div class="mlg-r"><span style="width:16px;height:12px;border-radius:2px;flex:0 0 auto;' +
         'background:repeating-linear-gradient(-45deg,' + D.officialColour + ' 0 2px,transparent 2px 5.5px),' +
-        shades[1] + '"></span>Green stripes: IDSP records (on white: IDSP only, no news)</div>';
+        shades[1] + '"></span>Green stripes: IDSP records (stripes alone: IDSP records, no news)</div>';
     if (selected !== null) {
       h += '<div class="mlg-h">In ' + districts[selected].name + '</div>';
       if (mode !== 'official') D.statusOrder.forEach(function (s) {
@@ -676,8 +678,6 @@ class IndiaMap(MacroElement):
         self._name = "IndiaMap"
         self.data = _js(data)
         self.background = MAP_BACKGROUND
-        self.alert_colour = ALERT_COLOUR
-        self.official_colour = OFFICIAL_COLOUR
 
 
 def _js(value) -> str:

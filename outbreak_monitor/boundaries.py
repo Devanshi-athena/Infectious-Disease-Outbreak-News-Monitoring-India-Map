@@ -376,9 +376,5 @@ def build() -> None:
           + ", ".join(missing))
 
 
-def load(path: Path = DISTRICTS_FILE) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 if __name__ == "__main__":
     build()

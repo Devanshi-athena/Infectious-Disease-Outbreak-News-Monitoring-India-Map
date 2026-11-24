@@ -34,14 +34,14 @@ def phrase_pattern(phrase: str) -> str:
 
 
 def _first_words(phrase: str) -> tuple[list[str], bool]:
-    """The alternatives of a phrase's first word, lower case ("girl|boy dies of ..." -> girl, boy), and whether
+    """The alternatives of a phrase's first word ("girl|boy dies of ..." -> girl, boy), and whether
     the word may run on (a one-word keyword with a trailing *, "hospitali*"); otherwise it ends at a word
     boundary, as in phrase_pattern."""
     head = phrase.partition("!")[0]
     words = normalise_text(head.rstrip("*")).split()
     if not words:
         return [], False
-    return [w.lower() for w in words[0].split("|")], len(words) == 1 and head.endswith("*")
+    return words[0].split("|"), len(words) == 1 and head.endswith("*")
 
 
 def trie_pattern(words) -> str:

@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from outbreak_monitor import official
 from outbreak_monitor.config import OfficialSource
-from outbreak_monitor.dashboard_data import filter_official, load_official, official_popup_html
+from outbreak_monitor.dashboard_data import filter_official, load_official
 from outbreak_monitor.db import OfficialReport, get_session_factory
 from outbreak_monitor.official import DistrictLocator, _clean, _date, _join, _rejoin, list_weekly_reports
 
@@ -122,8 +122,9 @@ def test_dashboard_official_layer():
     assert list(filter_official(df, ["Dengue"], [])["report_id"]) == ["A/1"]
     assert list(filter_official(df, [], ["Assam"])["report_id"]) == ["A/2"]
     assert len(filter_official(df, [], [])) == 2                      # unmapped diseases shown without a filter
-    popup = official_popup_html(next(df.itertuples()))
-    assert "Dengue &lt;b&gt;" in popup and "Week 34, 2026" in popup and "https://x/w34.pdf" in popup
+    from outbreak_monitor.map_view import official_items
+    card = official_items(df.assign(latitude=26.1, longitude=91.7, location_level="state"))[0]["c"]
+    assert "Dengue &lt;b&gt;" in card and "Week 34, 2026" in card and "https://x/w34.pdf" in card
 
 
 def test_disease_map_maps_only_listed_terms():

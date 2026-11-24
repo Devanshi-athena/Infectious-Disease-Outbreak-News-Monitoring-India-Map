@@ -8,8 +8,7 @@ from sqlalchemy import select
 from outbreak_monitor import collector
 from outbreak_monitor.config import (Disease, DiseaseConfig, Settings, Source, load_disease_config, load_sources,
                                      native_pattern)
-from outbreak_monitor.dashboard_data import (Filters, apply_filters, load_articles, not_on_map, options,
-                                             popup_html)
+from outbreak_monitor.dashboard_data import Filters, apply_filters, load_articles, not_on_map, options
 from outbreak_monitor.db import Article, SeenLink, get_session_factory, utcnow
 from outbreak_monitor.discovery import Discovery
 from outbreak_monitor.matcher import KeywordMatcher
@@ -262,10 +261,13 @@ def test_dashboard_language_filter_and_original_headline():
     assert options(df)["languages"] == ["English", "Hindi"]
     hindi = apply_filters(df, Filters(view="all", languages=["Hindi"]))
     assert list(hindi["headline"]) == ["25 new dengue patients found in Patna"]
-    popup = popup_html(hindi.assign(place="Patna"))
-    assert HEADLINE_HI in popup and "Hindi, translated" in popup
+    from outbreak_monitor.map_view import news_items
+    located = dict(country="India", latitude=25.6, longitude=85.1, state="Bihar", district_lgd_code=None)
+    [card] = [i["c"] for i in news_items(hindi.assign(place="Patna", **located))]
+    assert HEADLINE_HI in card and "Hindi" in card                    # the original headline and its language
     english = apply_filters(df, Filters(view="all", languages=["English"]))
-    assert "translated" not in popup_html(english.assign(place="Pune"))
+    [card] = [i["c"] for i in news_items(english.assign(place="Pune", **located))]
+    assert 'class="mc-o"' not in card                                  # no original headline for English
 
 
 def test_articles_from_india_without_a_place_are_listed_as_not_on_the_map():

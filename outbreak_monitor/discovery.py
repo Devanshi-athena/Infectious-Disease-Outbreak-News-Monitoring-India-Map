@@ -282,6 +282,12 @@ def read_keyword_pages(template: str, source: Source, max_pages: int, known_urls
         except requests.HTTPError as exc:
             if page > 1 and exc.response is not None and exc.response.status_code in (404, 410):
                 break  # ran past the last page
+            if items:
+                raise PartialListing(items, [f"page {page}: {exc}"]) from exc
+            raise
+        except Exception as exc:
+            if items:   # keep what the earlier pages found
+                raise PartialListing(items, [f"page {page}: {type(exc).__name__}"]) from exc
             raise
         new = [i for i in page_items if i["url"] not in seen]
         if not new:

@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from outbreak_monitor.dashboard_data import (Filters, apply_filters, district_zoom_options, load_articles, options,
-                                             save_reviews, story_markers, summary)
+                                             save_reviews, summary)
 from outbreak_monitor.db import Article, CollectionRun, get_session_factory
 
 
@@ -86,24 +86,25 @@ def test_filters(factory):
     assert ids(apply_filters(df, Filters(start=date(2026, 10, 10), end=date(2026, 10, 31)))) == [1, 2, 6]
 
 
-def test_story_markers_and_totals(factory):
+def test_map_items_and_totals(factory):
+    from outbreak_monitor.map_view import news_items
     with factory() as s:
         df = apply_filters(load_articles(s), Filters(include_abroad=True))
         totals = summary(df, s)
-    markers = story_markers(df)
-    assert sorted(m.article_ids for m in markers) == [[1, 2], [3], [6]]          # 1+2 one story; 5 abroad: no marker
+    items = news_items(df)
+    assert len(items) == 3                                    # articles 1+2 are one story; 5 is abroad: not mapped
     assert (totals["articles"], totals["locations"]) == (5, 2)
     assert totals["last_refresh"].strftime("%H:%M %Z") == "15:00 IST"
-    story = next(m for m in markers if m.article_ids == [1, 2])
-    assert "Site A" in story.popup_html and "Site B" in story.popup_html and "Pune, Maharashtra" in story.popup_html
-    assert 'href="https://b.in/2"' in story.popup_html
+    card = next(i["c"] for i in items if "Site B" in i["c"])
+    assert "Site A" in card and "Pune, Maharashtra" in card and 'href="https://b.in/2"' in card
 
 
-def test_popup_escapes_external_text(factory):
+def test_map_cards_escape_external_text(factory):
+    from outbreak_monitor.map_view import news_items
     with factory() as s:
         df = apply_filters(load_articles(s), Filters(view="all"))
-    [marker] = [m for m in story_markers(df) if m.article_ids == [7]]
-    assert "<script>" not in marker.popup_html and "&lt;script&gt;" in marker.popup_html
+    cards = " ".join(i["c"] + i["h"] + i["p"] for i in news_items(df))
+    assert "<script>" not in cards and "&lt;script&gt;" in cards
 
 
 def test_district_zoom_options(factory):
