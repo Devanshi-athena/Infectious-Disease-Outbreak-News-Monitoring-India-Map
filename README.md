@@ -8,7 +8,7 @@ Everything runs locally in Python with open-source libraries. No paid APIs or la
 
 ## What it does
 
-1. Every 30 minutes (or when you press *Refresh now*) it reads RSS feeds, sitemaps and topic pages from 22 English and 113 Indian-language news sites and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
+1. Every 30 minutes it reads RSS feeds, sitemaps and topic pages (*Refresh now* reads just the feeds and news sitemaps, for a quick update) from 22 English and 113 Indian-language news sites and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
 2. For each article it stores the headline, source, publication date, URL and text, and records which disease keywords matched.
 3. A rule-based classifier decides whether the article reports an outbreak (or a public-health response to one), and whether the report is new, suspected or historical.
 4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline, and given its official LGD code.
@@ -35,6 +35,7 @@ Other useful commands:
 
 ```powershell
 python -m outbreak_monitor.scheduler              # collect now and then every 30 minutes (Ctrl+C to stop)
+python -m outbreak_monitor.collector --quick      # one quick run: feeds and news sitemaps since the last run
 python -m outbreak_monitor.collector --backfill   # re-read every source in depth over the last 45 days
 python -m outbreak_monitor.official               # fetch only the official IDSP reports
 python -m outbreak_monitor.reprocess              # re-classify and re-locate all stored articles
@@ -195,7 +196,7 @@ Each site is handled by its own worker so a slow site doesn't hold up the others
 3. downloads each remaining article (if robots.txt allows) and extracts the text, canonical URL and date with Trafilatura;
 4. stores it, unless it is a duplicate.
 
-Normally a run only needs the feeds and the 48-hour sitemaps. If the computer was off for more than 36 hours, the next run catches up automatically by reading the archives and topic pages back to the last successful run. A newly added source or search term is backfilled over 45 days the same way.
+Normally a run only needs the feeds and the 48-hour sitemaps, from shortly before the last run (6 hours' overlap); topic pages are read at most every 3 hours. Only one run happens at a time: a run that would start while another is in progress (a click on *Refresh now* during a scheduled run) does not start. If the computer was off for more than 36 hours, the next run catches up automatically by reading the archives and topic pages back to the last successful run. A newly added source or search term is backfilled over 45 days the same way.
 
 **Duplicates.** An article isn't stored again if its canonical URL is known, if its text is identical to a stored one, or if the same site has published an almost identical headline with the same numbers within 3 days. "Cases rise to 48" is therefore treated as a new update, not a copy of "cases rise to 40". The same story from different publishers is stored for each one but grouped under one `story_id`, so the map shows a single marker listing all sources.
 
@@ -275,7 +276,7 @@ LGD still lists many city areas as villages (Hadapsar in Pune), and the same vil
 - **States × diseases** tab: how many reports each state has for each disease, as a table shaded from light (few) to dark (many), either for news reports (each story counted once, following the sidebar filters) or for the official IDSP records. Below it, a bar chart ranks the states for one chosen disease. These are counts of reports, not of cases.
 - **Not on the map** tab: articles from India that match the filters but name no state or district (national stories, or the place could not be read), with the reason. With *Relevant outbreak reports* selected, these are relevant reports that simply have no place on the map. The caption under the map says how many there are.
 - **Official reports** tab: every IDSP record with all its fields and a link to the weekly PDF.
-- **Refresh now** runs a collection straight away.
+- **Refresh now** collects what was published since the last refresh (feeds and news sitemaps only), in the background: the dashboard stays usable and updates itself when it is done. Topic pages, archives and any re-processing after a configuration change are left to the scheduled 30-minute run.
 
 The dashboard only listens on `localhost`, because it can save reviews and start collection runs. Put it behind a login before opening it to a network.
 

@@ -5,9 +5,11 @@ Each reader returns a list of candidate dicts:
 Only links on the source's own domain are returned. Article pages themselves are fetched
 later by the extractor.
 
-Every run reads RSS, news sitemaps and the first page of each keyword page. Listings that the
-collector plans to read "in depth" (see collector.plan_deep_reads) are read further: archive
-sitemaps back to a cutoff, and keyword pages up to `backfill_max_pages` pages.
+Every run reads RSS and news sitemaps; scheduled runs also read the first page of each keyword
+page that was not read in the last few hours. Listings that the collector plans to read "in depth"
+(see collector.plan_deep_reads) are read further: archive sitemaps back to a cutoff, and keyword
+pages up to `backfill_max_pages` pages. A quick run (the dashboard's "Refresh now") reads only
+feeds and news sitemaps.
 """
 
 import calendar
@@ -21,6 +23,7 @@ from urllib.parse import quote_plus, urljoin, urlsplit
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+from lxml import etree
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from .config import Disease, Source
@@ -133,22 +136,57 @@ def _child_in_window(loc: str, lastmod: str | None, cutoff: datetime) -> bool:
     return all(d is None or d >= cutoff for d in (_period_end(loc), _parse_iso(lastmod)))
 
 
-def _parse_urlset(soup: BeautifulSoup, cutoff: datetime | None, method: str) -> list[dict]:
+_XML_PARSER = etree.XMLParser(recover=True, huge_tree=True, resolve_entities=False, no_network=True)
+
+
+def _xml(content: bytes):
+    """A sitemap as an lxml element tree (read about 10x faster than with BeautifulSoup). Lenient with small
+    errors, as publishers' sitemaps have them; None if nothing could be read."""
+    content = content.lstrip()
+    return etree.fromstring(content, _XML_PARSER) if content else None
+
+
+def _name(el) -> str:
+    """Element name without its namespace ("{...sitemap-news/0.9}title" -> "title")."""
+    tag = el.tag
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def _text(el) -> str | None:
+    return el.text.strip() if el is not None and el.text and el.text.strip() else None
+
+
+def _fields(node) -> dict:
+    """The first element of each name inside node (any depth), in one pass. Titles of images and videos are
+    left out: the article title is <news:title>, <image:title> / <video:title> only caption a picture or clip."""
+    found = {}
+    for el in node.iter():
+        if el is node:
+            continue
+        name = _name(el)
+        if name == "title" and (el.prefix in ("image", "video") or _name(el.getparent()) in ("image", "video")):
+            continue
+        found.setdefault(name, el)
+    return found
+
+
+def _parse_urlset(root, cutoff: datetime | None, method: str) -> list[dict]:
     items = []
-    for node in soup.find_all("url"):
-        loc = node.find("loc")
+    if root is None:
+        return items
+    for node in root:
+        if _name(node) != "url":
+            continue
+        f = _fields(node)
+        loc = _text(f.get("loc"))
         if not loc:
             continue
-        # The article title is <news:title>; <image:title> / <video:title> only caption a picture or clip.
-        title = next((t for t in node.find_all("title") if t.prefix not in ("image", "video")), None)
-        date, keywords, lastmod = (node.find(n) for n in ("publication_date", "keywords", "lastmod"))
-        published = _parse_iso(date.get_text(strip=True) if date else None)
-        modified = _parse_iso(lastmod.get_text(strip=True) if lastmod else None)
+        published = _parse_iso(_text(f.get("publication_date")))
+        modified = _parse_iso(_text(f.get("lastmod")))
         if cutoff and (published or modified) and (published or modified) < cutoff:
             continue
-        items.append(_candidate(loc.get_text(strip=True), title.get_text(strip=True) if title else None, method,
-                                published_at=published,
-                                meta_keywords=keywords.get_text(strip=True) if keywords else None))
+        items.append(_candidate(loc, _text(f.get("title")), method, published_at=published,
+                                meta_keywords=_text(f.get("keywords"))))
     return items
 
 
@@ -157,21 +195,23 @@ def read_sitemap(url: str, cutoff: datetime | None = None, child_pattern: str | 
     """Read a sitemap or sitemap index (Google-News or plain). For an index, children are read
     if they match child_pattern and may contain entries newer than cutoff. If some children fail,
     PartialListing is raised carrying the items of the others."""
-    soup = BeautifulSoup(_fetch_allowed(url).content, "xml")
-    if not soup.find("sitemapindex"):
-        return _parse_urlset(soup, cutoff, method)
+    root = _xml(_fetch_allowed(url).content)
+    if root is None or _name(root) != "sitemapindex":
+        return _parse_urlset(root, cutoff, method)
     items, failures = [], []
-    for node in soup.find_all("sitemap"):
-        loc_tag, lastmod = node.find("loc"), node.find("lastmod")
-        if not loc_tag:
+    for node in root:
+        if _name(node) != "sitemap":
             continue
-        loc = loc_tag.get_text(strip=True)
+        f = _fields(node)
+        loc = _text(f.get("loc"))
+        if not loc:
+            continue
         if child_pattern and not re.search(child_pattern, loc):
             continue
-        if cutoff and not _child_in_window(loc, lastmod.get_text(strip=True) if lastmod else None, cutoff):
+        if cutoff and not _child_in_window(loc, _text(f.get("lastmod")), cutoff):
             continue
         try:
-            items.extend(_parse_urlset(BeautifulSoup(_fetch_allowed(loc).content, "xml"), cutoff, method))
+            items.extend(_parse_urlset(_xml(_fetch_allowed(loc).content), cutoff, method))
         except Exception as exc:  # keep the other files
             failures.append(f"{loc}: {type(exc).__name__}")
             log.warning("Sitemap file failed %s: %s", loc, exc)
@@ -235,21 +275,26 @@ def keyword_page_templates(source: Source, diseases: list[Disease]) -> list[str]
 # ---------------------------------------------------------------- per source
 
 def discover(source: Source, diseases: list[Disease], *, cutoff: datetime, deep: dict[str, datetime],
-             max_pages: int, known_urls: set[str]) -> Discovery:
+             max_pages: int, known_urls: set[str], skip: frozenset[str] = frozenset(),
+             quick: bool = False) -> Discovery:
     """Run all configured collection methods for one source. Failures are recorded, not raised.
 
-    deep maps archive-sitemap URLs and keyword-page templates to read in depth to the cutoff for
-    that read (archives are only read when listed; keyword pages get max_pages instead of 1).
+    cutoff: sitemap entries dated before it are not listed (the collector sets it to shortly before
+    the last run, so known entries are not parsed again). deep maps archive-sitemap URLs and
+    keyword-page templates to read in depth to the cutoff for that read (archives are only read when
+    listed; keyword pages get max_pages instead of 1). skip: keyword-page templates read recently enough
+    to leave out this time. quick: only feeds and news sitemaps (the dashboard's "Refresh now").
     """
     result = Discovery()
     jobs = [(url, "rss", False, read_rss) for url in source.rss]
     jobs += [(url, "sitemap", False, lambda u: read_sitemap(u, cutoff)) for url in source.sitemaps]
-    jobs += [(url, "archive", True,
-              lambda u: read_sitemap(u, deep[u], source.archive_child_pattern, "archive"))
-             for url in source.archive_sitemaps if url in deep]
-    jobs += [(tpl, "keyword_page", tpl in deep,
-              lambda t: read_keyword_pages(t, source, max_pages if t in deep else 1, known_urls))
-             for tpl in keyword_page_templates(source, diseases)]
+    if not quick:
+        jobs += [(url, "archive", True,
+                  lambda u: read_sitemap(u, deep[u], source.archive_child_pattern, "archive"))
+                 for url in source.archive_sitemaps if url in deep]
+        jobs += [(tpl, "keyword_page", tpl in deep,
+                  lambda t: read_keyword_pages(t, source, max_pages if t in deep else 1, known_urls))
+                 for tpl in keyword_page_templates(source, diseases) if tpl in deep or tpl not in skip]
     pattern = re.compile(source.article_pattern) if source.article_pattern else None
 
     for url, kind, is_deep, reader in jobs:

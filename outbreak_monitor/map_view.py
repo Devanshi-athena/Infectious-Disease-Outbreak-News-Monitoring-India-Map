@@ -14,7 +14,6 @@ outside India's official boundary is covered.
 
 import html
 import json
-from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 
@@ -120,28 +119,6 @@ def _district_of(code, lat, lon) -> int | None:
 
 
 # ---------------------------------------------------------------- what the map shows
-
-@dataclass
-class DistrictReports:
-    stories: int
-    diseases: list[tuple[str, int]]   # most reported first
-
-
-def district_reports(df: pd.DataFrame) -> dict[int, DistrictReports]:
-    """News reports (stories) per district boundary (LGD code). Reports placed only at state level are not
-    counted. A report in a district created after the boundary edition counts in the district it was carved from."""
-    if df.empty:
-        return {}
-    rows = df[(df["country"] == "India") & df["district_lgd_code"].notna()].drop_duplicates("story_id")
-    rows = rows.assign(dc=[_district_of(r.district_lgd_code, r.latitude, r.longitude) for r in rows.itertuples()])
-    rows = rows.explode("diseases")
-    out = {}
-    for dc, group in rows.groupby("dc"):
-        diseases = group.dropna(subset=["diseases"]).groupby("diseases")["story_id"].nunique()
-        out[int(dc)] = DistrictReports(int(group["story_id"].nunique()),
-                                       sorted(((d, int(n)) for d, n in diseases.items()), key=lambda x: (-x[1], x[0])))
-    return out
-
 
 def shade(n: int, source: str = "news") -> str | None:
     for (low, high), colour in zip(SHADE_BREAKS, SHADES[source]):

@@ -34,7 +34,7 @@ def run(candidates, pages, factory=None, listings=None, sources=(SITE,)):
     factory = factory or get_session_factory("sqlite://")
     fetched = []
 
-    def fake_discover(source, diseases, *, cutoff, deep, max_pages, known_urls):
+    def fake_discover(source, diseases, *, cutoff, deep, max_pages, known_urls, **_):
         mine = candidates.get(source.name, []) if isinstance(candidates, dict) else candidates
         return Discovery(candidates=[dict(c) for c in mine], listings=list(listings or [
             {"source": source.name, "url": f"https://{source.domain}/rss", "kind": "rss", "deep": False,
@@ -268,3 +268,78 @@ def test_config_change_rechecks_rejected_links():
     with patch.object(collector, "config_hash", return_value="k2" * 16 + "a2" * 16):  # hepatitis keywords added
         second, _, fetched = run(candidates, pages, factory)
     assert fetched == ["https://site.in/k"] and second["new"] == 1
+
+
+def _spy_discover(calls):
+    def fake(source, diseases, **kwargs):
+        calls.append(kwargs)
+        return Discovery(listings=[{"source": source.name, "url": f"https://{source.domain}/rss", "kind": "rss",
+                                    "deep": False, "ok": True, "error": None}])
+    return fake
+
+
+def test_only_one_run_at_a_time_and_stale_runs_are_closed():
+    factory = get_session_factory("sqlite://")
+    with factory() as session:
+        session.add(CollectionRun(mode="incremental", started_at=utcnow() - timedelta(minutes=5)))   # in progress
+        session.commit()
+    calls = []
+    with patch.object(collector, "discover", _spy_discover(calls)):
+        result = collector.collect(factory, [SITE], CFG)
+    assert result["status"] == "skipped" and calls == []
+    with factory() as session:   # the earlier run is now 7 hours old: it was interrupted
+        first = session.get(CollectionRun, 1)
+        first.started_at = utcnow() - timedelta(hours=7)
+        session.commit()
+    with patch.object(collector, "discover", _spy_discover(calls)):
+        result = collector.collect(factory, [SITE], CFG)
+    assert result["status"] == "success" and len(calls) == 1
+    with factory() as session:
+        statuses = [r.status for r in session.scalars(select(CollectionRun).order_by(CollectionRun.run_id))]
+    assert statuses == ["failed", "skipped", "success"]
+
+
+def test_quick_run_reads_feeds_since_last_run_and_keeps_config_for_the_full_run():
+    factory = get_session_factory("sqlite://")
+    started = utcnow() - timedelta(hours=1)
+    with factory() as session:
+        session.add(CollectionRun(mode="incremental", status="success", started_at=started, finished_at=started,
+                                  config_hash="old" * 21 + "x"))
+        session.commit()
+    calls = []
+    with patch.object(collector, "discover", _spy_discover(calls)), patch.object(collector, "reprocess") as rep:
+        result = collector.collect(factory, [SITE], CFG, quick=True)
+    assert result["mode"] == "quick" and calls[0]["quick"] is True and calls[0]["deep"] == {}
+    assert abs(calls[0]["cutoff"] - (started - collector.LISTING_OVERLAP)) < timedelta(seconds=1)
+    rep.assert_not_called()   # the configuration changed, but a quick run leaves that to the next full run
+    with factory() as session:
+        assert session.get(CollectionRun, 2).config_hash == "old" * 21 + "x"
+
+
+def test_keyword_pages_read_recently_are_left_out():
+    factory = get_session_factory("sqlite://")
+    with factory() as session:
+        session.add_all([ListingStatus(url="https://site.in/tag/dengue", source_name="Site", kind="keyword_page",
+                                       last_ok_at=utcnow() - timedelta(hours=1)),
+                         ListingStatus(url="https://site.in/tag/malaria", source_name="Site", kind="keyword_page",
+                                       last_ok_at=utcnow() - timedelta(hours=5))])
+        session.commit()
+        assert collector.recent_keyword_pages(session) == {"https://site.in/tag/dengue"}
+
+
+def test_quick_discovery_reads_no_keyword_pages_or_archives():
+    from outbreak_monitor import discovery
+    source = Source("Site", domain="site.in", rss=["https://site.in/rss"], sitemaps=["https://site.in/news.xml"],
+                    archive_sitemaps=["https://site.in/archive.xml"], keyword_pages=["https://site.in/tag/{slug}"])
+    read = []
+    with patch.object(discovery, "read_rss", lambda u: read.append(u) or []), \
+            patch.object(discovery, "read_sitemap", lambda u, *a, **k: read.append(u) or []), \
+            patch.object(discovery, "read_keyword_pages", lambda t, *a, **k: read.append(t) or []):
+        now = utcnow()
+        discovery.discover(source, DISEASES, cutoff=now, deep={"https://site.in/archive.xml": now}, max_pages=3,
+                           known_urls=set(), quick=True)
+        assert read == ["https://site.in/rss", "https://site.in/news.xml"]
+        read.clear()
+        discovery.discover(source, DISEASES, cutoff=now, deep={}, max_pages=3, known_urls=set(),
+                           skip=frozenset({"https://site.in/tag/dengue"}))
+        assert read == ["https://site.in/rss", "https://site.in/news.xml", "https://site.in/tag/hepatitis-a"]

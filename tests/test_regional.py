@@ -55,7 +55,7 @@ def cand(url, headline=HEADLINE_HI, method="sitemap"):
 def run(candidates, pages, translator, factory=None, sources=(HINDI,), cfg=CFG):
     factory = factory or get_session_factory("sqlite://")
 
-    def fake_discover(source, diseases, *, cutoff, deep, max_pages, known_urls):
+    def fake_discover(source, diseases, *, cutoff, deep, max_pages, known_urls, **_):
         return Discovery(candidates=[dict(c) for c in candidates], listings=[
             {"source": source.name, "url": f"https://{source.domain}/sitemap.xml", "kind": "sitemap", "deep": False,
              "ok": True, "error": None}])
@@ -203,14 +203,13 @@ def test_english_article_on_a_regional_site_is_not_translated():
 
 
 def test_sitemap_title_is_the_news_title_not_an_image_caption():
-    from bs4 import BeautifulSoup
-    from outbreak_monitor.discovery import _parse_urlset
+    from outbreak_monitor.discovery import _parse_urlset, _xml
     xml = ('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
            'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" '
            'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"><url><loc>https://ml.example.in/a</loc>'
            '<image:image><image:title>WhatsApp Image.jpeg</image:title></image:image>'
            '<news:news><news:title>ഡെങ്കിപ്പനി പടരുന്നു</news:title></news:news></url></urlset>')
-    [item] = _parse_urlset(BeautifulSoup(xml, "xml"), None, "sitemap")
+    [item] = _parse_urlset(_xml(xml.encode()), None, "sitemap")
     assert item["headline"] == "ഡെങ്കിപ്പനി പടരുന്നു"
 
 

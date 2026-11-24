@@ -260,16 +260,23 @@ def test_district_boundaries_cover_lgd_and_decode():
     assert 8 < s < 9 and 12 < n < 13 and 74 < w < 75.5 and 77 < e < 78
 
 
-def test_district_reports_count_stories_once():
+def test_district_counts_count_stories_once():
     import pandas as pd
-    from outbreak_monitor.map_view import district_reports, shade
+    from outbreak_monitor.map_view import district_counts, news_items, shade
     df = pd.DataFrame({"country": ["India"] * 4, "story_id": [1, 1, 2, 3],
                        "district_lgd_code": [102.0, 102.0, 102.0, None],
                        "latitude": [26.9, 26.9, 26.9, 27.0], "longitude": [75.8, 75.8, 75.8, 75.0],
-                       "diseases": [["Dengue"], ["Dengue"], ["Dengue", "Malaria"], ["Dengue"]]})
-    counts = district_reports(df)
-    assert list(counts) == [102] and counts[102].stories == 2
-    assert counts[102].diseases == [("Dengue", 2), ("Malaria", 1)]
+                       "diseases": [["Dengue"], ["Dengue"], ["Dengue", "Malaria"], ["Dengue"]],
+                       "published_at": pd.to_datetime(["2026-11-20"] * 4), "event_status": ["new"] * 4,
+                       "headline": ["a", "a", "b", "c"], "headline_original": [None] * 4,
+                       "language_name": ["English"] * 4,
+                       "article_url": ["https://x.in/1", "https://y.in/1", "https://x.in/2", "https://x.in/3"],
+                       "source_name": ["X", "Y", "X", "X"], "place": ["Jaipur"] * 3 + ["Rajasthan"],
+                       "state": ["Rajasthan"] * 4})
+    items = news_items(df)
+    assert len(items) == 3 and {i["dc"] for i in items} == {102, None}   # story 3 names only the state
+    counts = district_counts(items)
+    assert counts == {102: {"n": 2, "top": "Dengue 2, Malaria 1"}}
     assert shade(0) is None and shade(1) != shade(2) and shade(16) == shade(100)
 
 

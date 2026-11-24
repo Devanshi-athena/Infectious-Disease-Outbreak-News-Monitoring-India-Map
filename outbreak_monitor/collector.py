@@ -1,8 +1,15 @@
 """Collect disease-related articles from the configured sources into the database.
 
-    python -m outbreak_monitor.collector              # one run (manual refresh)
+    python -m outbreak_monitor.collector              # one run
+    python -m outbreak_monitor.collector --quick      # quick run: feeds and news sitemaps only (as "Refresh now")
     python -m outbreak_monitor.collector --backfill   # force an in-depth read of every listing
     python -m outbreak_monitor.scheduler              # run on a schedule
+
+Only one run at a time: a run that starts while another is in progress stops at once (status "skipped").
+
+A quick run (the dashboard's "Refresh now") reads only RSS feeds and news sitemaps, since shortly before
+the last run: it picks up what was published since then in a few minutes. It reads no keyword pages or
+archives, and leaves a re-processing after a configuration change to the next scheduled run.
 
 One run:
  0. Plan: listings never read in depth (first run, a new source or search term, an archive that
@@ -67,6 +74,9 @@ MAX_WORKERS = 64                       # threads for discovery/extraction (each 
 MAX_FETCH_ATTEMPTS = 3                 # runs in which a temporarily failing article download is tried
 CATCH_UP_AFTER = timedelta(hours=36)   # news sitemaps cover ~48 h; after a longer gap, read archives
 CATCH_UP_MARGIN = timedelta(hours=12)  # overlap with the last successful run
+LISTING_OVERLAP = timedelta(hours=6)   # sitemap entries are listed from this long before the last run
+KEYWORD_PAGE_INTERVAL = timedelta(hours=3)  # a keyword page's first page is read at most this often
+RUN_TIMEOUT = timedelta(hours=6)       # a run still "running" after this long was interrupted
 KEYWORD_FILES = (CONFIG_DIR / "diseases.yaml",)
 CONFIG_FILES = KEYWORD_FILES + (CONFIG_DIR / "relevance.yaml", CONFIG_DIR / "locations.yaml", CONFIG_DIR / "lgd.yaml",
                                 INDIA_FILE, FOREIGN_FILE, LGD_NEW_DISTRICTS_FILE)
@@ -123,6 +133,29 @@ def plan_deep_reads(session, sources: list[Source], diseases, cutoff: datetime,
                 deep[url] = gap_cutoff
                 mode = "catch-up" if mode == "incremental" else mode
     return mode, deep
+
+
+def other_active_run(session, me: CollectionRun) -> CollectionRun | None:
+    """An earlier run that is still in progress, if any. Runs left "running" for longer than RUN_TIMEOUT
+    (stopped by a shutdown or a closed dashboard) are marked as failed on the way."""
+    stale_before, active = utcnow() - RUN_TIMEOUT, None
+    for run in session.scalars(select(CollectionRun).where(CollectionRun.status == "running",
+                                                           CollectionRun.run_id != me.run_id)):
+        if run.started_at < stale_before:
+            run.status, run.finished_at = "failed", run.finished_at or utcnow()
+            run.errors = (run.errors or []) + [{"source": None, "url": None,
+                                                "error": "Interrupted: the run did not finish"}]
+        elif run.run_id < me.run_id and active is None:
+            active = run
+    session.commit()
+    return active
+
+
+def recent_keyword_pages(session) -> frozenset[str]:
+    """Keyword-page templates read successfully within KEYWORD_PAGE_INTERVAL: left out of this run."""
+    since = utcnow() - KEYWORD_PAGE_INTERVAL
+    return frozenset(session.scalars(select(ListingStatus.url).where(ListingStatus.kind == "keyword_page",
+                                                                     ListingStatus.last_ok_at >= since)))
 
 
 class _Run:
@@ -342,8 +375,9 @@ class _Run:
 
 
 def collect(session_factory=None, sources=None, disease_config=None, backfill: bool = False,
-            translator: Translator | None = None) -> dict:
-    """One collection run over all enabled sources. Returns the run statistics."""
+            translator: Translator | None = None, quick: bool = False) -> dict:
+    """One collection run over all enabled sources (quick: feeds and news sitemaps only). Returns the run
+    statistics; status "skipped" if another run was already in progress."""
     session_factory = session_factory or get_session_factory()
     sources = [s for s in (sources if sources is not None else load_sources()) if s.enabled]
     disease_config = disease_config or load_disease_config()
@@ -363,17 +397,36 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
 
     with session_factory() as session:
         cutoff = utcnow() - timedelta(days=settings.lookback_days)
-        mode, deep = plan_deep_reads(session, sources, diseases, cutoff, backfill)
         previous_hash = session.scalar(select(CollectionRun.config_hash).where(CollectionRun.config_hash.is_not(None))
                                        .order_by(CollectionRun.run_id.desc()).limit(1))
-        run_record = CollectionRun(mode=mode, config_hash=current_hash)
+        keywords_changed = previous_hash is not None and previous_hash[:32] != current_hash[:32]
+        if quick:
+            mode, deep, skip = "quick", {}, frozenset()
+        else:
+            mode, deep = plan_deep_reads(session, sources, diseases, cutoff, backfill)
+            skip = recent_keyword_pages(session)
+        # Sitemap entries older than shortly before the last run were listed then: not parsed again (unless
+        # keywords changed, when the whole window is checked again, or on a backfill)
+        last = last_successful_run(session)
+        listing_cutoff = cutoff
+        if last and mode != "backfill" and not (keywords_changed and not quick):
+            listing_cutoff = max(cutoff, last.started_at - LISTING_OVERLAP)
+        # A quick run leaves a configuration change to the next full run, so it keeps the previous fingerprint
+        run_record = CollectionRun(mode=mode, config_hash=previous_hash if quick else current_hash)
         session.add(run_record)
         session.commit()
-        log.info("Starting %s run (articles since %s UTC, %d listings in depth)",
-                 mode, cutoff.strftime("%Y-%m-%d %H:%M"), len(deep))
+        if other := other_active_run(session, run_record):
+            log.info("Another collection run (started %s UTC) is still in progress: not starting a second one",
+                     other.started_at.strftime("%Y-%m-%d %H:%M"))
+            run_record.status, run_record.finished_at = "skipped", utcnow()
+            session.commit()
+            return {"mode": mode, "status": "skipped", "new": 0, "running_since": other.started_at}
+        log.info("Starting %s run (articles since %s UTC, listings since %s UTC, %d listings in depth, "
+                 "%d keyword pages read recently left out)", mode, cutoff.strftime("%Y-%m-%d %H:%M"),
+                 listing_cutoff.strftime("%Y-%m-%d %H:%M"), len(deep), len(skip))
 
         has_articles = session.scalar(select(Article.article_id).limit(1)) is not None
-        if previous_hash != current_hash and (previous_hash is not None or has_articles):
+        if not quick and previous_hash != current_hash and (previous_hash is not None or has_articles):
             if (previous_hash or "")[:32] != current_hash[:32]:
                 log.info("Keywords changed: re-checking links rejected for having no keyword")
                 session.execute(delete(SeenLink).where(SeenLink.outcome == "no_keyword"))
@@ -388,8 +441,9 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
             # never holds up the others. Workers only talk to their own site (per-domain rate limit
             # in fetch.py); all database work (and translation) happens here in the main thread.
             with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, 2 * max(1, len(sources)))) as pool:
-                pending = {pool.submit(discover, s, diseases, cutoff=cutoff, deep=deep,
-                                       max_pages=settings.backfill_max_pages, known_urls=set(run.known_urls)):
+                pending = {pool.submit(discover, s, diseases, cutoff=listing_cutoff, deep=deep,
+                                       max_pages=settings.backfill_max_pages, known_urls=set(run.known_urls),
+                                       skip=skip, quick=quick):
                            ("discovered", s) for s in sources}
                 listings: dict[str, list[dict]] = {}
                 while pending:
@@ -433,10 +487,12 @@ def collect(session_factory=None, sources=None, disease_config=None, backfill: b
         return {"mode": run_record.mode, "status": run_record.status, **run.stats, "new_by_method": run.new_by_method}
 
 
-def run_and_report(session_factory=None, backfill: bool = False) -> dict:
+def run_and_report(session_factory=None, backfill: bool = False, quick: bool = False) -> dict:
     """One collection run with a summary in the log."""
     session_factory = session_factory or get_session_factory()
-    result = collect(session_factory, backfill=backfill)
+    result = collect(session_factory, backfill=backfill, quick=quick)
+    if result["status"] == "skipped":
+        return result
     try:  # official reports are a separate stage: a slow or failing NCDC site never blocks news collection
         result["official"] = collect_official(session_factory)
     except Exception as exc:
@@ -453,9 +509,11 @@ def main():
     parser = argparse.ArgumentParser(description="Collect outbreak news articles once.")
     parser.add_argument("--backfill", action="store_true",
                         help="read every archive sitemap and keyword page in depth over the lookback window")
+    parser.add_argument("--quick", action="store_true",
+                        help="feeds and news sitemaps only, since the last run (as the dashboard's Refresh now)")
     args = parser.parse_args()
     setup_logging()
-    run_and_report(backfill=args.backfill)
+    run_and_report(backfill=args.backfill, quick=args.quick)
 
 
 if __name__ == "__main__":

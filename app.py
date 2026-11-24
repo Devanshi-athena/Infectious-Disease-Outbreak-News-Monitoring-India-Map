@@ -6,7 +6,8 @@
 import base64
 import html
 import math
-from datetime import timedelta
+import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import altair as alt
@@ -14,7 +15,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from outbreak_monitor.config import load_disease_config
-from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVENT_LABELS, FIRST_REPORT_WEEKS,
+from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVENT_LABELS, FIRST_REPORT_WEEKS, IST,
                                              OFFICIAL_COLOUR, REVIEW_OPTIONS, RISE_FACTOR, RISE_MIN_REPORTS, VIEWS,
                                              Filters, apply_filters, district_zoom_options, filter_official,
                                              latest_reports, lgd_label, load_articles, load_official, not_on_map,
@@ -178,12 +179,65 @@ def india_mask_shape():
     return india_mask(load_boundary())
 
 
-def run_refresh():
-    from outbreak_monitor.collector import run_and_report  # heavy imports only when refreshing
-    with st.spinner("Collecting news and official reports… this can take a few minutes."):
-        result = run_and_report(factory)
-    st.cache_data.clear()
-    st.session_state["refresh_result"] = result
+@st.cache_resource(show_spinner=False)
+def refresh_job() -> dict:
+    """The "Refresh now" run in the background, shared by everyone using this dashboard."""
+    return {"thread": None, "started": None, "result": None}
+
+
+def refresh_running() -> bool:
+    job = refresh_job()
+    return job["thread"] is not None and job["thread"].is_alive()
+
+
+def start_refresh():
+    """A quick run (feeds and news sitemaps since the last run) in a background thread, so the dashboard stays
+    usable. A second click while it runs does nothing; a scheduled run already in progress makes it skip."""
+    job = refresh_job()
+    if refresh_running():
+        return
+
+    def work():
+        from outbreak_monitor.collector import run_and_report  # heavy imports only when refreshing
+        try:
+            job["result"] = run_and_report(factory, quick=True)
+        except Exception as exc:  # shown in the sidebar; the details are in the log
+            job["result"] = {"status": "failed", "new": 0, "error": f"{type(exc).__name__}: {exc}"}
+
+    job.update(result=None, started=datetime.now(IST),
+               thread=threading.Thread(target=work, name="refresh-now", daemon=True))
+    job["thread"].start()
+
+
+@st.fragment(run_every=5)
+def refresh_panel():
+    """The refresh button and its progress; checks every 5 seconds and reloads the data once a run finishes."""
+    job, running = refresh_job(), refresh_running()
+    if st.button("Refresh now", icon=":material/refresh:", width="stretch", type="primary", disabled=running,
+                 help="Collect the articles published since the last refresh (news feeds and sitemaps). "
+                      "The full collection, with topic pages, runs every 30 minutes."):
+        start_refresh()
+        running = True
+    if running:
+        st.info(f"Collecting new articles (started {job['started']:%H:%M}). You can keep using the dashboard; "
+                "it updates when the refresh is done.", icon=":material/sync:")
+        return
+    result = job["result"]
+    if result is None:
+        return
+    if "refresh_seen" not in st.session_state:   # this browser session started after the run: data is current
+        st.session_state["refresh_seen"] = result
+    if st.session_state["refresh_seen"] is not result:   # first look after the run: reload everything once
+        st.session_state["refresh_seen"] = result
+        st.cache_data.clear()
+        st.rerun(scope="app")
+    if result["status"] == "skipped":
+        st.info("A scheduled collection was already running; its articles appear when it finishes.",
+                icon=":material/schedule:")
+    elif result["status"] == "failed":
+        st.error(f"Refresh failed: {result.get('error') or 'see the log'}")
+    else:
+        st.success(f"Refresh done: {result['new']} new article(s).")
 
 
 @st.cache_resource(show_spinner=False)
@@ -245,11 +299,7 @@ with st.sidebar:
                              "date filter does not apply to them.")
     include_abroad = st.toggle("Reports outside India (list only)", value=False)
     st.markdown('<div class="section">Data</div>', unsafe_allow_html=True)
-    if st.button("Refresh now", icon=":material/refresh:", width="stretch", type="primary",
-                 help="Collect new articles and official reports now"):
-        run_refresh()
-    if result := st.session_state.get("refresh_result"):
-        st.success(f"Refresh finished ({result['status']}): {result['new']} new article(s).")
+    refresh_panel()
 
 start, end = (dates[0], dates[1]) if isinstance(dates, (tuple, list)) and len(dates) == 2 else (None, None)
 filters = Filters(view=view, diseases=diseases, states=states, sources=sources, languages=languages, start=start,

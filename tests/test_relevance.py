@@ -202,3 +202,15 @@ def test_native_keyword_excluded_endings():
     assert m.match("ഇൻഫ്ലുവൻസറുടെ വീട്ടിലെത്തി") == []                      # influencer's house
     assert m.match("വ്ലോഗർമാർക്കും ഇൻഫ്ലുവൻസർമാർക്കും എതിരെ നടപടി") == []   # influencers
     assert m.match("ഏവിയൻ ഇൻഫ്ലുവൻസയുടെ സ്ഥിരീകരണം") == []                    # avian influenza: animals
+
+
+def test_quick_gate_gives_the_same_matches():
+    from outbreak_monitor.config import load_disease_config
+    from outbreak_monitor.matcher import KeywordMatcher
+    m = KeywordMatcher(load_disease_config().diseases)
+    texts = ["News: dengue cases rise in Pune", "New human case of H5N1 in Andhra", "newsletter about cricket",
+             "Hospitalised after food poisoning", "डेंगूने दोघांचा मृत्यू", "Girl dies of bird flu", "Stock markets rally"]
+    gated = [m.match(t) for t in texts]
+    gate, m.gate = m.gate, None
+    assert gated == [m.match(t) for t in texts]
+    assert gate.search("Cricket news today") is None   # "new" is a whole word in its keyword, not "news"
