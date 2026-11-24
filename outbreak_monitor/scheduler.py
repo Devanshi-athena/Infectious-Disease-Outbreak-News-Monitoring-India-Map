@@ -29,9 +29,10 @@ def main():
     minutes = load_disease_config().settings.refresh_interval_minutes
     scheduler = BlockingScheduler()
     # max_instances=1: never start a run while the previous one is still going;
-    # coalesce: if runs were missed (e.g. laptop asleep), do just one catch-up run.
+    # coalesce + misfire_grace_time=None: if runs were missed (e.g. laptop asleep), do just one run on waking
+    # (the default grace of 1 second would drop the missed run instead).
     scheduler.add_job(_job, "interval", minutes=minutes, next_run_time=datetime.now(),
-                      max_instances=1, coalesce=True)
+                      max_instances=1, coalesce=True, misfire_grace_time=None)
     log.info("Scheduler started: collecting every %d minutes", minutes)
     try:
         scheduler.start()

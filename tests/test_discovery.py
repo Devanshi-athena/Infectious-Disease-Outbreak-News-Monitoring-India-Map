@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -197,3 +198,28 @@ def test_config_files_load():
     assert len({d.name for d in cfg.diseases}) == len({d.code for d in cfg.diseases}) == len(cfg.diseases)
     assert all(not d.search_terms for d in cfg.diseases if not d.monitored)   # never searched for
     assert cfg.settings.lookback_days > 0 and cfg.settings.backfill_max_pages >= 1
+
+
+def test_sitemap_with_undeclared_prefix_and_image_links():
+    xml = ('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url>'
+           '<image:image><image:loc>https://www.example.in/photo.jpg</image:loc><image:title>Photo</image:title></image:image>'
+           '<loc>https://www.example.in/news/dengue-cases-rise-1</loc>'
+           '<news:news><news:publication_date>2026-09-10T10:00:00Z</news:publication_date>'
+           '<news:title>Dengue cases rise</news:title><news:keywords>dengue, Pune</news:keywords></news:news>'
+           '</url></urlset>')
+    with patch.object(discovery, "_fetch_allowed", return_value=_resp(xml)):
+        [item] = discovery.read_sitemap("https://www.example.in/news-sitemap.xml", CUTOFF)
+    assert item["url"] == "https://www.example.in/news/dengue-cases-rise-1"
+    assert (item["headline"], item["meta_keywords"]) == ("Dengue cases rise", "dengue, Pune")
+    assert item["published_at"] == datetime(2026, 9, 10, 10, 0)
+
+
+@pytest.mark.parametrize("body", ["<html><body>Please verify you are human</body></html>", "", "garbage"])
+def test_a_page_that_is_not_a_sitemap_is_an_error(body):
+    with patch.object(discovery, "_fetch_allowed", return_value=_resp(body)):
+        with pytest.raises(discovery.FeedParseError):
+            discovery.read_sitemap("https://www.example.in/news-sitemap.xml", CUTOFF)
+
+
+def test_a_bad_date_in_a_sitemap_name_is_ignored():
+    assert discovery._period_end("https://www.example.in/sitemap/2026-13-01.xml") is None

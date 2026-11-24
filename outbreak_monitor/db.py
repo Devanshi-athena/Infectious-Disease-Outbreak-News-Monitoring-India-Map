@@ -169,18 +169,21 @@ class CollectionRun(Base):
     mode: Mapped[str] = mapped_column(String(20), default="incremental")  # backfill/catch-up/incremental
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running/success/partial/failed
-    config_hash: Mapped[str | None] = mapped_column(String(64))  # of diseases.yaml + relevance.yaml
+    # running / success / partial / failed; skipped (another run was in progress); reprocessed (reprocess.py)
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    config_hash: Mapped[str | None] = mapped_column(String(64))  # of the configuration (collector.config_hash)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime)  # updated while the run is alive
     stats: Mapped[dict | None] = mapped_column(JSON)
     errors: Mapped[list | None] = mapped_column(JSON)  # [{"source": ..., "url": ..., "error": ...}]
 
 
-def last_successful_run(session) -> CollectionRun | None:
-    """Most recent run that completed (fully or with some failed listings)."""
-    return session.scalars(
-        select(CollectionRun).where(CollectionRun.status.in_(["success", "partial"]))
-        .order_by(CollectionRun.finished_at.desc()).limit(1)
-    ).first()
+def last_successful_run(session, full_only: bool = False) -> CollectionRun | None:
+    """Most recent run that completed (fully or with some failed listings). full_only: leave out quick runs
+    ("Refresh now", feeds and news sitemaps only), which do not count when deciding whether to catch up."""
+    query = select(CollectionRun).where(CollectionRun.status.in_(["success", "partial"]))
+    if full_only:
+        query = query.where(CollectionRun.mode != "quick")
+    return session.scalars(query.order_by(CollectionRun.finished_at.desc()).limit(1)).first()
 
 
 def get_session_factory(db_url: str | None = None) -> sessionmaker:

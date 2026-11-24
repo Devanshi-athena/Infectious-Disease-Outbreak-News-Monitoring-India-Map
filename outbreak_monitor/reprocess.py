@@ -25,13 +25,16 @@ from .relevance import NO_KEYWORD, RelevanceClassifier, apply, load_relevance_co
 
 
 def reprocess(session, matcher: KeywordMatcher, classifier: RelevanceClassifier,
-              locator: LocationResolver, keywords: dict[str, list[str]]) -> Counter:
-    """Update all articles in place and commit. Returns counts of (relevance, content_type, event_status)."""
+              locator: LocationResolver, keywords: dict[str, list[str]], progress=None) -> Counter:
+    """Update all articles in place and commit. Returns counts of (relevance, content_type, event_status).
+    progress: called every 100 articles (the collector's heartbeat while it re-processes)."""
     stories = StoryIndex()
     counts = Counter()
     primary = {name: kws[0] for name, kws in keywords.items() if kws}
     articles = session.scalars(select(Article).order_by(Article.published_at, Article.article_id)).all()
-    for a in articles:
+    for n, a in enumerate(articles, 1):
+        if progress and n % 100 == 0:
+            progress()
         if a.language and a.language != "en":
             original = a.article_text or a.excerpt
             body = english_body(a.translation)

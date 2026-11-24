@@ -16,6 +16,7 @@ import calendar
 import html
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import quote_plus, urljoin, urlsplit
@@ -117,10 +118,13 @@ def read_rss(feed_url: str) -> list[dict]:
 
 def _period_end(url: str) -> datetime | None:
     """Last day covered by an archive sitemap, from its URL (daily or monthly naming)."""
-    if m := re.search(r"yyyy=(\d{4})&mm=(\d{1,2})&dd=(\d{1,2})", url):
-        return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
-    if m := re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})\.xml$", url):   # one file per day: .../2026-11-10.xml
-        return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
+    try:
+        if m := re.search(r"yyyy=(\d{4})&mm=(\d{1,2})&dd=(\d{1,2})", url):
+            return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
+        if m := re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})\.xml$", url):   # one file per day: .../2026-11-10.xml
+            return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59)
+    except ValueError:   # not a real date ("2026-13-01"): the period is unknown
+        return None
     m = (re.search(r"(\d{4})-([a-z]+)", url, re.I) or re.search(r"([a-z]+)-(\d{4})", url, re.I))
     if m:
         year, month = (m[1], m[2]) if m[1].isdigit() else (m[2], m[1])
@@ -136,20 +140,41 @@ def _child_in_window(loc: str, lastmod: str | None, cutoff: datetime) -> bool:
     return all(d is None or d >= cutoff for d in (_period_end(loc), _parse_iso(lastmod)))
 
 
-_XML_PARSER = etree.XMLParser(recover=True, huge_tree=True, resolve_entities=False, no_network=True)
+_parsers = threading.local()   # an lxml parser is not shared between threads (sites are read in parallel)
 
 
 def _xml(content: bytes):
     """A sitemap as an lxml element tree (read about 10x faster than with BeautifulSoup). Lenient with small
     errors, as publishers' sitemaps have them; None if nothing could be read."""
+    if not hasattr(_parsers, "xml"):
+        _parsers.xml = etree.XMLParser(recover=True, huge_tree=True, resolve_entities=False, no_network=True)
     content = content.lstrip()
-    return etree.fromstring(content, _XML_PARSER) if content else None
+    return etree.fromstring(content, _parsers.xml) if content else None
+
+
+def _sitemap(content: bytes):
+    """The root of a sitemap or sitemap index. Anything else (an HTML page, a block or consent page, an empty
+    response) is an error, so that a listing that no longer works is not recorded as read."""
+    root = _xml(content)
+    if root is None or _name(root) not in ("urlset", "sitemapindex"):
+        raise FeedParseError(f"not a sitemap: <{_name(root) if root is not None else 'empty response'}>")
+    return root
+
+
+def _split(el) -> tuple[str | None, str]:
+    """(prefix, name) of an element: "{...sitemap-news/0.9}title" -> (news, title). A prefix the sitemap
+    forgot to declare stays in the tag ("news:title") and is split off here."""
+    tag = el.tag
+    if not isinstance(tag, str):
+        return None, ""
+    local = tag.rsplit("}", 1)[-1]
+    prefix, _, name = local.rpartition(":")
+    return el.prefix or prefix or None, name
 
 
 def _name(el) -> str:
-    """Element name without its namespace ("{...sitemap-news/0.9}title" -> "title")."""
-    tag = el.tag
-    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+    """Element name without namespace or prefix."""
+    return _split(el)[1]
 
 
 def _text(el) -> str | None:
@@ -157,14 +182,17 @@ def _text(el) -> str | None:
 
 
 def _fields(node) -> dict:
-    """The first element of each name inside node (any depth), in one pass. Titles of images and videos are
-    left out: the article title is <news:title>, <image:title> / <video:title> only caption a picture or clip."""
+    """The first element of each name inside node, in one pass. <loc> and <lastmod> are the entry's own
+    (direct children: an <image:loc> is a picture); the news fields may sit deeper (<news:news>). Titles of
+    images and videos are left out: the article title is <news:title>, <image:title> only captions a picture."""
     found = {}
     for el in node.iter():
         if el is node:
             continue
-        name = _name(el)
-        if name == "title" and (el.prefix in ("image", "video") or _name(el.getparent()) in ("image", "video")):
+        prefix, name = _split(el)
+        if name in ("loc", "lastmod") and el.getparent() is not node:
+            continue
+        if name == "title" and (prefix in ("image", "video") or _name(el.getparent()) in ("image", "video")):
             continue
         found.setdefault(name, el)
     return found
@@ -195,8 +223,8 @@ def read_sitemap(url: str, cutoff: datetime | None = None, child_pattern: str | 
     """Read a sitemap or sitemap index (Google-News or plain). For an index, children are read
     if they match child_pattern and may contain entries newer than cutoff. If some children fail,
     PartialListing is raised carrying the items of the others."""
-    root = _xml(_fetch_allowed(url).content)
-    if root is None or _name(root) != "sitemapindex":
+    root = _sitemap(_fetch_allowed(url).content)
+    if _name(root) != "sitemapindex":
         return _parse_urlset(root, cutoff, method)
     items, failures = [], []
     for node in root:
@@ -211,7 +239,7 @@ def read_sitemap(url: str, cutoff: datetime | None = None, child_pattern: str | 
         if cutoff and not _child_in_window(loc, _text(f.get("lastmod")), cutoff):
             continue
         try:
-            items.extend(_parse_urlset(_xml(_fetch_allowed(loc).content), cutoff, method))
+            items.extend(_parse_urlset(_sitemap(_fetch_allowed(loc).content), cutoff, method))
         except Exception as exc:  # keep the other files
             failures.append(f"{loc}: {type(exc).__name__}")
             log.warning("Sitemap file failed %s: %s", loc, exc)
@@ -276,18 +304,19 @@ def keyword_page_templates(source: Source, diseases: list[Disease]) -> list[str]
 
 def discover(source: Source, diseases: list[Disease], *, cutoff: datetime, deep: dict[str, datetime],
              max_pages: int, known_urls: set[str], skip: frozenset[str] = frozenset(),
-             quick: bool = False) -> Discovery:
+             quick: bool = False, cutoffs: dict[str, datetime] | None = None) -> Discovery:
     """Run all configured collection methods for one source. Failures are recorded, not raised.
 
-    cutoff: sitemap entries dated before it are not listed (the collector sets it to shortly before
-    the last run, so known entries are not parsed again). deep maps archive-sitemap URLs and
+    cutoff: sitemap entries dated before it are not listed; cutoffs: the same per listing (the collector
+    sets them to shortly before each listing's last good read, so known entries are not parsed again). deep maps archive-sitemap URLs and
     keyword-page templates to read in depth to the cutoff for that read (archives are only read when
     listed; keyword pages get max_pages instead of 1). skip: keyword-page templates read recently enough
     to leave out this time. quick: only feeds and news sitemaps (the dashboard's "Refresh now").
     """
     result = Discovery()
     jobs = [(url, "rss", False, read_rss) for url in source.rss]
-    jobs += [(url, "sitemap", False, lambda u: read_sitemap(u, cutoff)) for url in source.sitemaps]
+    cutoffs = cutoffs or {}
+    jobs += [(url, "sitemap", False, lambda u: read_sitemap(u, cutoffs.get(u, cutoff))) for url in source.sitemaps]
     if not quick:
         jobs += [(url, "archive", True,
                   lambda u: read_sitemap(u, deep[u], source.archive_child_pattern, "archive"))

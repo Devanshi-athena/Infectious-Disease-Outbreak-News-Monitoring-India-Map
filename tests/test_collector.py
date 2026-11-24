@@ -1,3 +1,4 @@
+import pytest
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -305,12 +306,18 @@ def test_quick_run_reads_feeds_since_last_run_and_keeps_config_for_the_full_run(
     with factory() as session:
         session.add(CollectionRun(mode="incremental", status="success", started_at=started, finished_at=started,
                                   config_hash="old" * 21 + "x"))
+        session.add_all([ListingStatus(url="https://site.in/news.xml", source_name="Site", kind="sitemap",
+                                       last_ok_at=started),
+                         ListingStatus(url="https://site.in/down.xml", source_name="Site", kind="sitemap",
+                                       last_ok_at=started - timedelta(days=3))])   # failing for 3 days
         session.commit()
     calls = []
     with patch.object(collector, "discover", _spy_discover(calls)), patch.object(collector, "reprocess") as rep:
         result = collector.collect(factory, [SITE], CFG, quick=True)
     assert result["mode"] == "quick" and calls[0]["quick"] is True and calls[0]["deep"] == {}
-    assert abs(calls[0]["cutoff"] - (started - collector.LISTING_OVERLAP)) < timedelta(seconds=1)
+    cutoffs = calls[0]["cutoffs"]   # each listing from shortly before its own last good read
+    assert abs(cutoffs["https://site.in/news.xml"] - (started - collector.LISTING_OVERLAP)) < timedelta(seconds=1)
+    assert cutoffs["https://site.in/down.xml"] < started - timedelta(days=3)
     rep.assert_not_called()   # the configuration changed, but a quick run leaves that to the next full run
     with factory() as session:
         assert session.get(CollectionRun, 2).config_hash == "old" * 21 + "x"
@@ -343,3 +350,66 @@ def test_quick_discovery_reads_no_keyword_pages_or_archives():
         discovery.discover(source, DISEASES, cutoff=now, deep={}, max_pages=3, known_urls=set(),
                            skip=frozenset({"https://site.in/tag/dengue"}))
         assert read == ["https://site.in/rss", "https://site.in/news.xml", "https://site.in/tag/hepatitis-a"]
+
+
+def test_quick_refreshes_do_not_stop_a_catch_up():
+    source = Source("Site", domain="site.in", archive_sitemaps=["https://site.in/index.xml"])
+    factory = get_session_factory("sqlite://")
+    with factory() as s:
+        s.add(ListingStatus(url="https://site.in/index.xml", source_name="Site", kind="archive", deep_read_at=utcnow()))
+        three_days = utcnow() - timedelta(days=3)
+        s.add(CollectionRun(mode="incremental", status="success", started_at=three_days, finished_at=three_days))
+        s.add(CollectionRun(mode="quick", status="partial", started_at=utcnow(), finished_at=utcnow()))
+        s.commit()
+        mode, deep = collector.plan_deep_reads(s, [source], DISEASES, utcnow() - timedelta(days=30), force=False)
+    assert mode == "catch-up" and list(deep) == ["https://site.in/index.xml"]   # the quick refresh read no archives
+
+
+def test_a_run_with_a_recent_heartbeat_is_alive_however_long_it_runs():
+    factory = get_session_factory("sqlite://")
+    with factory() as session:
+        session.add(CollectionRun(mode="backfill", started_at=utcnow() - timedelta(hours=9),
+                                  heartbeat_at=utcnow() - timedelta(minutes=2)))
+        session.commit()
+    with patch.object(collector, "discover", _spy_discover([])):
+        assert collector.collect(factory, [SITE], CFG)["status"] == "skipped"
+    with factory() as session:   # its process stopped: no heartbeat for 40 minutes
+        session.get(CollectionRun, 1).heartbeat_at = utcnow() - timedelta(minutes=40)
+        session.commit()
+    with patch.object(collector, "discover", _spy_discover([])):
+        assert collector.collect(factory, [SITE], CFG)["status"] == "success"
+
+
+def test_a_skipped_run_does_not_record_the_new_configuration():
+    factory = get_session_factory("sqlite://")
+    with factory() as session:
+        session.add(CollectionRun(mode="incremental", status="success", started_at=utcnow(), finished_at=utcnow(),
+                                  config_hash="old" * 21 + "x"))
+        session.add(CollectionRun(mode="quick", heartbeat_at=utcnow()))   # a refresh in progress
+        session.commit()
+    with patch.object(collector, "discover", _spy_discover([])):
+        assert collector.collect(factory, [SITE], CFG)["status"] == "skipped"
+    with factory() as session:
+        assert session.get(CollectionRun, 3).config_hash is None
+        session.get(CollectionRun, 2).status = "partial"
+        session.commit()
+    with patch.object(collector, "discover", _spy_discover([])), patch.object(collector, "reprocess") as rep:
+        collector.collect(factory, [SITE], CFG)
+    rep.assert_not_called()   # no articles stored yet; but the change was seen: the new configuration is recorded
+    with factory() as session:
+        assert session.get(CollectionRun, 4).config_hash == collector.config_hash()
+
+
+def test_an_interrupted_run_is_marked_failed():
+    factory = get_session_factory("sqlite://")
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    with patch.object(collector, "discover", interrupted):
+        with pytest.raises(KeyboardInterrupt):
+            collector.collect(factory, [SITE], CFG)
+    with patch.object(collector, "_Run", side_effect=RuntimeError("database gone")):
+        assert collector.collect(factory, [SITE], CFG)["status"] == "failed"
+    with factory() as session:
+        assert [r.status for r in session.scalars(select(CollectionRun))] == ["failed", "failed"]
