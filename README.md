@@ -4,11 +4,11 @@ This tool collects news about infectious disease outbreaks in India, works out w
 
 It is a news-based monitoring prototype, not an official surveillance or early-warning system. News coverage can be incomplete or delayed, and the number of articles says nothing about how many people are ill.
 
-Everything runs locally in Python with open-source libraries. No paid APIs or large language models are used. News in 12 Indian languages is translated to English offline with the open-source IndicTrans2 model.
+Collection, classification and translation run locally in Python with open-source libraries. No paid APIs or large language models are used. News in 12 Indian languages is translated to English offline with the open-source IndicTrans2 model. The only online services are the news sites, NCDC, OpenStreetMap Nominatim (for village lookups) and the optional Esri map backgrounds.
 
 ## What it does
 
-1. Every 30 minutes it reads RSS feeds, sitemaps and topic pages (*Refresh now* reads just the feeds and news sitemaps, for a quick update) from 22 English and 113 Indian-language news sites and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
+1. Every 30 minutes it reads RSS feeds and news sitemaps (and topic pages at most every 3 hours) from 22 English and 113 Indian-language news sites, and keeps only articles that mention a monitored disease. Articles in Indian languages are translated to English.
 2. For each article it stores the headline, source, publication date, URL and text, and records which disease keywords matched.
 3. A rule-based classifier decides whether the article reports an outbreak (or a public-health response to one), and whether the report is new, suspected or historical.
 4. The outbreak location is resolved to state, district or town, ignoring things like the newspaper's dateline, and given its official LGD code.
@@ -27,7 +27,10 @@ hf auth login                                     # once; see "Translation model
 python -m outbreak_monitor.translate --download   # once: the translation model (~0.9 GB) into models/
 python -m outbreak_monitor.collector              # first run collects the last 45 days (takes a while)
 streamlit run app.py                              # dashboard at http://localhost:8501
+python -m outbreak_monitor.scheduler              # in a second terminal: keeps collecting every 30 minutes
 ```
+
+Collection every 30 minutes happens only while the scheduler (or the Docker setup below) is running; the dashboard's *Refresh now* button runs a quick collection on request.
 
 **Translation model.** Indian-language articles are translated with [IndicTrans2](https://huggingface.co/ai4bharat/indictrans2-indic-en-dist-200M) (AI4Bharat, MIT licence). The model is free, but Hugging Face asks you to accept its terms first: sign in at huggingface.co, open the model page and request access (granted immediately), create a read token under *Settings → Access Tokens*, and run `hf auth login`. Without the model, English sources are still collected and the regional-language sources are skipped (never stored untranslated).
 
@@ -48,7 +51,7 @@ python -m outbreak_monitor.gazetteer              # rebuild the place reference 
 python -m outbreak_monitor.lgd --download         # refresh the LGD code lists (rarely needed)
 python -m outbreak_monitor.boundaries             # rebuild the state and district boundaries of the map (rarely needed)
 python -m outbreak_monitor.lgd --new-districts    # add LGD districts missing from GeoNames, located with Nominatim
-python -m outbreak_monitor.lgd --villages         # download the LGD village list (about 1 hour, resumable)
+python -m outbreak_monitor.lgd --villages         # download the LGD village list (about 3 hours, resumable)
 python -m outbreak_monitor.translate --language ta "டெங்கு காய்ச்சலால் 3 பேர் உயிரிழப்பு"   # try the translation
 pytest                                            # tests
 ```
@@ -99,8 +102,8 @@ The collector uses four ways of finding articles, and checks robots.txt before e
 |---|---|---|
 | RSS | Feeds the publisher provides for automated reading | every run |
 | News sitemap | XML listing every article from the last ~48 hours | every run |
-| Archive sitemap | Daily, weekly or monthly lists of all articles (URLs only) | when catching up |
-| Topic page | The site's own page for a disease, e.g. `/topic/dengue` | first page every run, more when catching up |
+| Archive sitemap | Daily, weekly or monthly lists of all articles (URLs only) | when catching up or backfilling (first run, new source) |
+| Topic page | The site's own page for a disease, e.g. `/topic/dengue` | first page at most every 3 hours; more pages when catching up or backfilling |
 
 | Source | RSS | News sitemap | Archive | Topic pages | Notes |
 |---|---|---|---|---|---|
@@ -134,11 +137,11 @@ English regional papers, added for states the national papers cover thinly:
 
 Arunachal Times and Imphal Free Press were checked but have no feed or sitemap; The Hills Times is no longer updated.
 
-Sources can be added, paused (`enabled: false`) or removed in `config/sources.yaml`. A new source is backfilled automatically on the next run.
+Sources can be added, paused (`enabled: false`) or removed in `config/sources.yaml` (English) and `config/regional_sources.yaml` (Indian languages). A new source is backfilled over 45 days on the next scheduled run, as far as its archive sitemaps and topic pages allow; a source with only a feed or news sitemap starts from its last ~48 hours.
 
 ### Indian-language news sites
 
-113 sites in 12 languages, in `config/regional_sources.yaml`. They are read through their news sitemaps and RSS feeds (no topic pages), and every one was checked live before it was added. Where a site splits its news sitemap into parts (Dainik Bhaskar has about 26, covering every district edition), all parts are read. The 23 ETV Bharat state editions, Rajasthan Patrika, Navbharat Times and Live Hindustan also publish archive sitemaps (daily or monthly), which give them a full 45-day backfill.
+113 sites in 12 languages, in `config/regional_sources.yaml`. They are read through their news sitemaps and RSS feeds (no topic pages), and every one was checked live before it was added. Where a site splits its news sitemap into parts (Dainik Bhaskar has about 26, covering every district edition), all parts are read. The 22 ETV Bharat editions (21 state editions and the national Urdu edition), Patrika, Navbharat Times and Live Hindustan also publish archive sitemaps (daily or monthly), which give them a full 45-day backfill.
 
 | Language | Sites | Sources |
 |---|---|---|
@@ -162,7 +165,7 @@ Anandabazar Patrika (Bengali) is listed but disabled: its sitemap refuses automa
 NCDC publishes a PDF every week listing each outbreak reported by the states through IDSP: state, district, disease, cases, deaths, dates, status and the action taken. These are read automatically and kept in their own table (`official_reports`). The reports appear about two months after the week they cover. Each run checks the latest 12 weekly reports and reads any it hasn't stored yet.
 
 Reading these PDFs reliably took some care:
-- each outbreak starts at its unique ID (e.g. `AS/BAJ/2026/34/1369`), and text that wraps across lines or pages is joined back to it;
+- each outbreak starts at its unique ID (e.g. `AS/BAJ/2026/34/1369`, sometimes printed without the week, `KN/BEN/2026/1026`), and text that wraps across lines or onto the next page is joined back to it, including an ID cut by a page break;
 - columns are matched by their header text, because the tables don't all have the same layout;
 - dates and status are recognised by their content, since narrow columns sometimes push them into the next column;
 - if state, district and disease have shifted by one column, they are put back using the place names;
@@ -170,7 +173,7 @@ Reading these PDFs reliably took some care:
 
 The report's own disease name is always kept as printed. It is linked to an IDSP condition only through the explicit table in `config/official_diseases.yaml` (for example "Acute Gastroenteritis" → Acute Diarrhoeal Disease, "Chandipura Virus" → Acute Encephalitis Syndrome, "Hepatitis A & E" → Hepatitis A and Hepatitis E). Terms are never stretched: "Jaundice" is the jaundice syndrome rather than hepatitis A/E, "Acute Hepatitis" is Acute Viral Hepatitis, a plain "Fever" outbreak is the fever syndrome, and conditions that IDSP reports outside its list (Guillain-Barré syndrome, hand, foot and mouth disease) go to *Other unusual syndrome or health condition*. This is the same standard used for news articles.
 
-Values are kept as printed, including a few obvious errors in the source PDFs. Where a value is cut off by a page break, the field is left empty rather than guessed. On a check of six weekly reports (245 outbreaks), 244 records were complete and 243 were located to the right district.
+Values are kept as printed, including a few obvious errors in the source PDFs. Districts renamed since the reference data (Dharashiv, Ahilyanagar, Sribhumi) are recognised, and a district that cannot be found keeps the report's own name. All 681 records of the 16 weekly reports stored (weeks 23–38 of 2026) are located to a district. After a change to the parser, `python -m outbreak_monitor.official --reparse` reads the stored weeks again.
 
 Other official sources were checked but not added, because they don't publish outbreak reports in a form that can be collected reliably:
 
@@ -197,7 +200,9 @@ Each site is handled by its own worker so a slow site doesn't hold up the others
 3. downloads each remaining article (if robots.txt allows) and extracts the text, canonical URL and date with Trafilatura;
 4. stores it, unless it is a duplicate.
 
-Normally a run only needs the feeds and the 48-hour sitemaps, from shortly before the last run (6 hours' overlap); topic pages are read at most every 3 hours. Only one run happens at a time: a run that would start while another is in progress (a click on *Refresh now* during a scheduled run) does not start. If the computer was off for more than 36 hours, the next run catches up automatically by reading the archives and topic pages back to the last successful run. A newly added source or search term is backfilled over 45 days the same way.
+Normally a run only needs the feeds and the 48-hour sitemaps. Each sitemap is read from shortly before its own last successful read (6 hours' overlap), so a site that was down for a while is read back to where it left off. Topic pages are read at most every 3 hours. If more than 36 hours have passed since the last full run (e.g. the computer was off), the next run catches up by reading the archives and topic pages back to shortly before it; quick refreshes don't count here, since they read no archives. A newly added source or search term is backfilled over 45 days the same way.
+
+**One run at a time.** A run that would start while another is in progress (a click on *Refresh now* during a scheduled run) does not start; it is recorded as "skipped". A running collection records a heartbeat every minute; a run left "running" without one for 30 minutes (its process was stopped, e.g. the laptop shut down) no longer blocks the next. Ctrl+C or an error marks a run as failed straight away. After the computer wakes from sleep, the scheduler runs once rather than skipping the missed run.
 
 **Duplicates.** An article isn't stored again if its canonical URL is known, if its text is identical to a stored one, or if the same site has published an almost identical headline with the same numbers within 3 days. "Cases rise to 48" is therefore treated as a new update, not a copy of "cases rise to 40". The same story from different publishers is stored for each one but grouped under one `story_id`, so the map shows a single marker listing all sources.
 
@@ -214,9 +219,7 @@ Articles from the regional-language sources go through the same steps, with scre
 3. **Tagging and classification.** Diseases are tagged from both the original text and the English translation. The classifier and the location finder then work on the translation, exactly as for English articles. If a sentence names a disease in the original but the translation lost it (for example, a local word for jaundice translated literally), the English disease name is added to that sentence for classification. The stored translation is not changed.
 4. **Storage.** The headline is stored in English, with the original headline, the original text, the language and every translated sentence next to its original. Articles in English on a regional site are recognised by their script and handled as English. Text in another language on an English site is never stored untranslated.
 
-When the configuration changes, stored articles are re-tagged and re-classified from the saved translation; they are not translated again.
-
-When `config/diseases.yaml`, `config/relevance.yaml` or `config/locations.yaml` changes, the next run re-tags, re-classifies and re-locates all stored articles, and searches the sites for any new terms.
+When a configuration file that decides tags, classification or location changes (`diseases.yaml`, `relevance.yaml`, `locations.yaml`, `lgd.yaml`, or the reference place data), the next scheduled run re-tags, re-classifies and re-locates all stored articles (Indian-language articles from their saved translation, without translating again), and searches the sites for any new terms. *Refresh now* leaves this to the scheduled run.
 
 ### Relevance and event type
 
@@ -224,7 +227,9 @@ The classifier is rule-based, so every decision comes with a reason (stored in `
 
 - A disease counts as the article's subject if it's in the headline, in three or more sentences, or early in the article and mentioned again.
 - Only sentences about that disease are checked for case counts ("40 new cases", "87 jawans hospitalised", "tally rises to 70"), outbreak words (outbreak, deaths, surge, suspected) and response words (fogging, alert, surveillance drive).
-- The headline is checked first for research, awareness and explainer pieces, crime stories, and stories about past events such as COVID compensation.
+- The headline is checked first for research, awareness and explainer pieces, crime stories, and stories about past events such as COVID compensation or "post-Covid" trends. A study, explainer or question headline still counts as a report when it gives a count ("12 new cases") or a strong event word ("dies", "confirmed", "dengue cases in Pune"); weaker words ("Why are dengue cases rising?") don't.
+- A headline that counts people taken ill without naming the disease ("100 hospitalised after eating chowmein") reports the disease named early in the article. Counts of something else don't count: "5 things people should know", "5,000 children vaccinated", "38 patients treated at a health camp", "70 per cent of people".
+- Words that only look like outbreak words are ignored: "BJP hits back", "death anniversary", "surgeon".
 - A disease mentioned only as a comparison ("Ebola is like Covid") doesn't count.
 
 | Type | Meaning | Relevant? |
@@ -249,8 +254,9 @@ Each article is placed at the most specific level it supports: state, district o
 - Place names used as people's names are skipped: after initials ("N Anand") or after "said", "Dr", "Minister" and similar words when followed by a surname ("said Sayan Chakrabarty"). "Anand district" is still a place.
 - Mentions are weighted: a place in the headline counts most, then places in sentences about the outbreak.
 - The dateline ("PUNE:") and bylines are ignored, unless the outbreak is clearly reported there. Places named only as the lab that tested samples, or as part of a hospital's name, are down-weighted.
-- Ambiguous names (Aurangabad in Bihar or Maharashtra) are resolved using the state the article mentions. If that's not possible, the location is flagged for review.
-- Articles about outbreaks abroad are recognised and kept off the map.
+- Ambiguous names (Aurangabad in Bihar or Maharashtra) are resolved using the state the article mentions. If that's not possible, the location is flagged for review. A name followed by "district" ("Banda district") is the district, not a same-named town elsewhere.
+- Abbreviations that also mean something else count as the state only in context: "in MP", "MP govt" and "AP CM" do, but "BJP MP" (a Member of Parliament), "(AP)" (the news agency), "Raj Thackeray" and "Maha Aarti" don't.
+- Articles about outbreaks abroad are recognised and kept off the map. A name shared with a foreign place ("Kochi" is also in Japan, "Mon" in Myanmar) is taken as Indian when it is an Indian state, district or large town, unless the foreign country is named in the same sentence.
 - Villages that aren't in the reference data are looked up with OpenStreetMap Nominatim, but only for relevant articles. The result must lie in the same state. There is at most one request per second, and every answer is cached.
 
 Each article stores the place in its own words, the level, a confidence (high/medium/low), a review flag, and the reasons for the choice.
@@ -266,24 +272,31 @@ LGD still lists many city areas as villages (Hadapsar in Pune), and the same vil
 
 `streamlit run app.py` opens it at http://localhost:8501.
 
-- **Map** of India only, on the official boundary (everything outside India is covered). Every name on the map is written by the tool in English, and the optional terrain and satellite backgrounds have no labels, so no foreign-script place names appear. Districts are shaded by the number of reports (darker = more), and districts where news reports are rising are outlined in red. Hovering a district shows its numbers, diseases, alerts and latest headlines. Clicking it makes it pop out (the rest of India dims and the map zooms to it): its reports appear as dots at their places, coloured by event status, with the full list in a panel beside the map; clicking outside the district goes back. Reports that name only a state appear as a small pill under the state's name. A switch in the sidebar shows news reports (violet), official IDSP records (green, with squares for the records), or both. Choosing a district in *Focus the map* opens it the same way.
-- **Filters** in the sidebar: disease group, disease, state, language, source and publication date. You can also include reports from outside India (list only) and turn official reports on or off. *Zoom to district* jumps to a district.
-- **Figures** at the top: matching articles, stories on the map, distinct locations, and the time of the last successful refresh.
+- **Map** of India only, on the official boundary (everything outside India is covered). Every name on the map is written by the tool in English, and the optional terrain and satellite backgrounds have no labels, so no foreign-script place names appear.
+  - Districts are shaded by the number of reports (darker = more); districts where news reports are rising are outlined in red. Hovering a district shows its numbers, diseases, alerts and latest headlines.
+  - Clicking a district makes it pop out (the rest of India dims and the map zooms to it): its reports appear as dots at their places, coloured by event status, with the full list in a panel on the right of the map. Clicking outside the district, the panel's ×, or Esc goes back. Districts with no reports aren't clickable.
+  - When zoomed in to a state, reports that name only the state appear as a pill under its name; click it for the list.
+  - *Map shows* in the sidebar chooses news reports (districts shaded violet, report dots coloured by event status), official IDSP records (shaded green, records as green squares), or both. In *Both*, districts with IDSP records are striped in green over the news shading (on white where there is no news).
+  - The layer button (top right) switches the background between plain, terrain and satellite, and can hide the shading, the red outlines, the place names or the stripes; there is also a full-screen button.
+  - *Focus the map*, above the map, zooms to a state or opens a district as if it had been clicked.
+- **Filters** in the sidebar: *View* (relevant outbreak reports, the default; relevant reports whose location needs review; or all collected articles), disease group, disease, state, language, source and publication date. You can also include reports from outside India (list only).
+- **Figures** at the top: matching articles, stories on the map, distinct locations, official IDSP records matching the filters, and the time of the last successful refresh.
 - **Beside the map**, the latest reports and the states with the most reports. These are story counts, not case numbers.
-- **Translated articles** show the English headline with the original headline and its language underneath, on the map, in the side panel and in the register.
-- **Alerts** compare the 7 days up to the latest report with the weeks before, for each disease and place (district, or the state when no district is named). **Rise**: at least 3 reports and at least twice the weekly average of the 4 weeks before. **First report**: the disease is reported in a district where it was not in the 8 weeks before. Only news reports of cases count (a new or suspected outbreak), each story once; preparedness news ("state on alert over Ebola"), fogging drives and past outbreaks don't. Alerts follow the disease and state filters, not the date filter. They point to news coverage to be checked against official data, not to confirmed outbreaks.
+- **Translated articles** show the English headline with the original headline and its language on the map and in the side panel, and in their own columns in the register.
+- **Alerts** compare the 7 days up to the end of the chosen period (by default the latest report) with the weeks before, for each disease and place (district, or the state when no district is named). **Rise**: at least 3 reports and at least twice the weekly average of the 4 weeks before. **First report**: the disease is reported in a district where it was not in the 8 weeks before. Only news reports of cases count (a new or suspected outbreak), each story once; preparedness news ("state on alert over Ebola"), fogging drives and past outbreaks don't. Dates are in Indian time. Alerts point to news coverage to be checked against official data, not to confirmed outbreaks.
 - **Outbreaks** groups the relevant reports of the same disease, in the same place and calendar week, as one outbreak, whatever the source or language, with the number of reports, sources and languages and the first headline.
-- **Article register** lists every matching article with its location, confidence, event status, language and a link to the original. The *Your review* column marks an article relevant or irrelevant, and the table can be downloaded as CSV.
+- **Article register** lists every matching article with its location, confidence, event status, language and a link to the original. The *Your review* column marks an article relevant or irrelevant; press *Save review changes* to store it. The table can be downloaded as CSV.
 - **States × diseases** tab: how many reports each state has for each disease, as a table shaded from light (few) to dark (many), either for news reports (each story counted once, following the sidebar filters) or for the official IDSP records. Below it, a bar chart ranks the states for one chosen disease. These are counts of reports, not of cases.
 - **Not on the map** tab: articles from India that match the filters but name no state or district (national stories, or the place could not be read), with the reason. With *Relevant outbreak reports* selected, these are relevant reports that simply have no place on the map. The caption under the map says how many there are.
 - **Official reports** tab: every IDSP record with all its fields and a link to the weekly PDF.
-- **Refresh now** collects what was published since the last refresh (feeds and news sitemaps only), in the background: the dashboard stays usable and updates itself when it is done. Topic pages, archives and any re-processing after a configuration change are left to the scheduled 30-minute run.
+- **About the data** tab: how articles are collected, translated, classified and located, data attribution, and the current list of states and union territories with no relevant report.
+- **Refresh now** collects what was published since the last refresh (feeds and news sitemaps only, plus a check for new IDSP weekly reports), in the background: the dashboard stays usable, and every open page updates itself when it is done. Topic pages, archives and any re-processing after a configuration change are left to the scheduled run (`outbreak_monitor.scheduler`).
 
 The dashboard only listens on `localhost`, because it can save reviews and start collection runs. Put it behind a login before opening it to a network.
 
 ## Evaluation
 
-The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 articles were picked at random from the database, labelled by reading them (`evaluation/labels.csv`, checked by Devanshi), and compared with what the system decided:
+The full write-up is in [`evaluation/REPORT.md`](evaluation/REPORT.md). 120 English-language articles published from 9 September to 28 October 2026 were picked at random from the database, labelled by reading them (`evaluation/labels.csv`, checked by Devanshi), and compared with what the system decided. Event status and disease are measured on the 61 relevant articles, location on the 57 of them with a place. Indian-language articles have not been evaluated yet.
 
 | | Result |
 |---|---|
@@ -305,7 +318,7 @@ The data is stored in SQLite (`data/outbreaks.db`) through SQLAlchemy, using por
 | `seen_links` | links checked but not stored (no keyword, too old, duplicate, failed download) |
 | `listing_status` | when each feed, sitemap or topic page was last read, and its last error |
 | `geocode_cache` | Nominatim answers, so each place is looked up only once |
-| `collection_runs` | one row per run: mode, times, status, counts and errors |
+| `collection_runs` | one row per run: mode (backfill, catch-up, incremental, quick), times, heartbeat, status (success, partial, failed, skipped), configuration fingerprint, counts and errors; manual re-processing is recorded too |
 
 New columns are added to an existing database automatically. `samples/` has 25 example articles (metadata only, without the publishers' text), 25 official records and the full schema (`schema.sql`).
 
@@ -316,14 +329,14 @@ To switch to PostgreSQL, install a driver (`pip install "psycopg[binary]"`) and 
 | File | What it controls |
 |---|---|
 | `config/diseases.yaml` | the IDSP conditions with their code, group, keywords, names in the 12 Indian languages and search terms; screening words per language; lookback period (45 days) and refresh interval (30 minutes) |
-| `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; URL sections to ignore |
-| `config/locations.yaml` | place abbreviations and spellings, display names, geocoding settings |
+| `config/relevance.yaml` | cue words for outbreaks, responses, research, awareness, crime, past events and comparisons; strong event words for headlines; phrases that only look like outbreak words; URL sections to ignore |
+| `config/locations.yaml` | place abbreviations (and which of them need context), spellings, display names, geocoding settings |
 | `config/lgd.yaml` | reference districts whose LGD name differs (renamed districts, LGD sub-districts) |
 | `config/sources.yaml` | English news sites and how to read them, plus the official report series |
 | `config/regional_sources.yaml` | Indian-language news sites, with their language |
 | `config/official_diseases.yaml` | which terms of the IDSP weekly outbreak reports map to which condition |
 
-Changes take effect on the next run. Stored articles are re-classified automatically.
+Changes take effect on the next run, and stored articles are re-processed on the next scheduled run (see Collection). A new refresh interval needs the scheduler to be restarted.
 
 ## Responsible use
 
@@ -368,9 +381,15 @@ outbreak_monitor/
   reprocess.py             re-applies the configuration to stored articles
   dashboard_data.py        data behind the dashboard
   boundaries.py            state and district boundaries, matched to LGD codes
-  map_view.py              the India map: base map, district shading, borders, labels, markers
+  map_view.py              the India map: base map, district shading, borders, labels, report dots
   export_samples.py        sample records and schema
-config/                    diseases, relevance cues, locations, sources
+  config.py                reads the YAML configuration
+  db.py                    database tables (SQLAlchemy)
+  fetch.py                 HTTP requests: rate limit, retries, robots.txt
+  urls.py, logs.py         URL normalisation; logging
+config/                    YAML settings (see Configuration)
+assets/                    dashboard logo
+requirements.txt           Python packages
 reference/                 place data, India, state and district boundaries, LGD code lists
 evaluation/                evaluation report, labels and scripts
 samples/                   example records and database schema
@@ -385,7 +404,8 @@ models/                    translation model (downloaded, not in git)
 | Problem | What to do |
 |---|---|
 | The dashboard shows an old error after code or config changes | Stop Streamlit (Ctrl+C) and start it again; it keeps old modules loaded |
-| `database is locked` | Another collection is running (e.g. the scheduler and the Refresh button). Wait for it to finish |
+| `database is locked` | A long write was in progress, e.g. `outbreak_monitor.reprocess` or `outbreak_monitor.official` run by hand during a collection. Wait for it to finish and try again |
+| *Refresh now* says a scheduled collection is already running | Only one collection runs at a time; its articles appear when it finishes |
 | A source keeps failing | Check the errors in `collection_runs` or `listing_status`. Temporary errors are retried; a site that keeps failing can be disabled in `config/sources.yaml` |
 | No official reports | The NCDC site can be slow. Run `python -m outbreak_monitor.official` and check the log |
 | A keyword change has no effect | It applies from the next run, or run `python -m outbreak_monitor.reprocess` |
@@ -396,7 +416,7 @@ models/                    translation model (downloaded, not in git)
 
 This is a prototype that reads public news. It shows what the news reports, not confirmed outbreaks or case numbers, and every report should be checked against official IDSP data before any action is taken.
 
-Coverage depends on what the news covers. Sources are in English and 12 Indian languages; languages such as Nepali, Khasi and Mizo are not covered yet, and some smaller states and union territories (Andaman and Nicobar Islands, Dadra and Nagar Haveli and Daman and Diu, Ladakh, Lakshadweep, Meghalaya, Mizoram, Sikkim) have had no outbreak news in the period collected. The dashboard's About tab lists them from the current data. A place with no reports on the map is not necessarily free of disease.
+Coverage depends on what the news covers. Sources are in English and 12 Indian languages; languages such as Nepali, Khasi and Mizo are not covered yet, and some smaller states and union territories have had no outbreak news in the period collected (as of 24 November 2026: Andaman and Nicobar Islands, Dadra and Nagar Haveli and Daman and Diu, Ladakh, Lakshadweep, Meghalaya, Sikkim). The dashboard's *About the data* tab lists them from the current data. A place with no reports on the map is not necessarily free of disease.
 
 ## Known limitations
 
@@ -404,5 +424,5 @@ Coverage depends on what the news covers. Sources are in English and 12 Indian l
 - Translation is automatic and the names in the 12 languages have not yet been reviewed by native speakers.
 - History is limited: most regional sites have no usable archive, so the data goes back about 45 days, and alerts compare against only those weeks.
 - IDSP weekly reports arrive about two months late, so news and official records can only be compared later.
-- District boundaries are of 2023: the 15 districts created since are counted inside the district they came from (Delhi shows its earlier 11 districts), and few localities get a village code.
+- District boundaries are of 2023: the 15 districts created since are counted inside the district they came from (Delhi shows its earlier 11 districts), and the districts abolished in Rajasthan in December 2024 are merged into their parent district. Few localities get a village code.
 - Most news sites' terms of use restrict automated collection; each needs permission before production use (see Responsible use).

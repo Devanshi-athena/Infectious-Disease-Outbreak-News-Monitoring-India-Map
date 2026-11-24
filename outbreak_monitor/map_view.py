@@ -1,11 +1,10 @@
 """The India map of the dashboard.
 
-Detail is revealed by zoom, so the map never shows everything at once:
-  India view     districts shaded by the number of reports; districts with an alert outlined in red
-  State view     one circle per district with reports (size = number), with the district's name
-  District view  each report as a dot at its place; reports at the same place share one dot with a number
-Clicking a district, circle or dot opens a panel with its reports. The map shows news reports, official IDSP
-records, or both (news, with the IDSP records as green badges).
+Districts are shaded by the number of reports (violet: news, green: official IDSP records); districts where news
+reports are rising are outlined in red. Hovering a district shows its numbers and latest reports. Clicking it
+opens it: the rest of India dims, the map zooms to it, and its reports appear as dots at their places (coloured by
+event status; IDSP records as green squares), with the full list in a panel. Reports that name only a state are a
+pill under the state's name. In "both" mode, districts with IDSP records are striped in green over the news shading.
 
 Everything written on the map comes from our own data (LGD names in English). The optional backgrounds carry no
 labels (Esri World Shaded Relief or World Imagery), so no place name in another script ever shows, and everything
@@ -661,7 +660,7 @@ class IndiaMap(MacroElement):
   update();
   updateLegend();
   refreshDistrictNames();
-  // after the map's starting view is set (later in this page's script)
+  // a district chosen in the focus selector opens once the map is ready (build_map then skips its own fit)
   if (D.select !== null && districts[D.select]) setTimeout(function () { select(D.select, true); }, 50);
 
   var overlays = {'District shading': fills, 'Rising outlines': alertLines, 'Place names': names};
