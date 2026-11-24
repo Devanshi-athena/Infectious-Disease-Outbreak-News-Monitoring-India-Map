@@ -52,15 +52,18 @@ _ILL = (r"(?:hospitali[sz]ed|admitted|infected|tested positive|test positive|fel
 # Numbers that count something else: "5 things people should know", "10 tips", and people who were
 # vaccinated or screened rather than taken ill.
 _NOT_A_COUNT = (r"(?!\s+(?:things|tips|ways|facts|signs|symptoms|reasons|myths|questions|foods|habits|steps|mistakes|"
-                r"rules|precautions|remedies|dos|don'?ts)\b)")
+                r"rules|precautions|remedies|dos|don'?ts|per\s*cent|percent)\b|%)")
 _NOT_ILL = (r"(?!\s+(?:were\s+|have\s+been\s+|had\s+been\s+)?(?:vaccinated|immuni[sz]ed|inoculated|screened|"
-            r"examined|registered|enrolled|trained|benefit\w*|covered|given)\b)")
+            r"examined|registered|enrolled|trained|benefit\w*|covered|given|treated|checked|arriv\w*|visit\w*|"
+            r"attended)\b)")
 _NUMBERED = (rf"{_NUMBER}{_NOT_A_COUNT}\s+(?:[\w-]+\s+){{0,3}}?{_COUNTED}\b{_NOT_ILL}"
              rf"|{_NUMBER}\s+(?:[\w-]+\s+){{0,2}}?{_ILL}\b"
              rf"|\b(?:tally|toll|count|cases)\s+(?:[\w-]+\s+){{0,3}}?(?:to|at|of|crosse?d?|reache?d?|touche?d?)\s+\d")
 CASE_COUNT = re.compile(rf"{_NUMBERED}|\bcases\s+(?:[\w,'’-]+\s+){{0,6}}?{_TREND}", re.IGNORECASE)
 NUMBERED_COUNT = re.compile(_NUMBERED, re.IGNORECASE)   # a count with a number in it (not just "cases rising")
 YEAR = re.compile(r"\b(19[5-9]\d|20\d\d)\b")
+# An older year counts only when it reads as a date ("in 1605", "since 1918"), not as a number ("1605 cases")
+OLD_YEAR = re.compile(r"\b(?:in|since|of|from|during|year)\s+(1[0-8]\d\d|19[0-4]\d)\b", re.IGNORECASE)
 
 _nlp = None
 
@@ -124,6 +127,9 @@ class RelevanceClassifier:
         central, event_d, response_d, event_sents = [], [], [], set()
         in_headline, event_count = set(), {}
         mentioned = [self._diseases_in(s) for s in sents]
+        # A headline that counts people taken ill ("100 hospitalised after eating chowmein") without naming the
+        # disease: a disease named in the opening sentences is what it reports.
+        head_numbered = NUMBERED_COUNT.search(self._without_non_events(headline))
         for name in [n for n in self.matcher.order if any(n in ds for ds in mentioned)]:
             idx = [i for i, ds in enumerate(mentioned) if name in ds]
             if not idx:
@@ -131,13 +137,15 @@ class RelevanceClassifier:
             in_head = idx[0] == 0
             body = [i for i in idx if i > 0]
             in_lead = any(i <= LEAD_SENTENCES for i in body)
-            if not (in_head or len(body) >= 3 or (in_lead and len(body) >= 2)):
+            if not (in_head or len(body) >= 3 or (in_lead and len(body) >= 2) or (in_lead and head_numbered)):
                 continue
             central.append(name)
             if in_head:
                 in_headline.add(name)
             reasons.append(f"{name}: {'in headline, ' if in_head else ''}{len(body)} sentence(s)")
             events = [(i, e) for i in idx if (e := self._event(sents[i]))]
+            if not events and not in_head and head_numbered:   # central, and the headline counts the people
+                events = [(0, head_numbered.group(0))]
             event_count[name] = len(events)
             if events:
                 event_d.append(name)
@@ -203,7 +211,7 @@ class RelevanceClassifier:
         # year) and nothing in the lead marking the report as current. Body text often compares
         # with earlier years ("up from last year"), so it is not used.
         year = (published_at or datetime.now()).year
-        head_years = [int(y) for y in YEAR.findall(headline)]
+        head_years = [int(y) for y in YEAR.findall(headline) + OLD_YEAR.findall(headline)]
         current = self._cue("current", lead) or (year in head_years and str(year))
         historical = self._cue("historical", headline) or (head_years and max(head_years) < year and str(max(head_years)))
         if historical and not current:

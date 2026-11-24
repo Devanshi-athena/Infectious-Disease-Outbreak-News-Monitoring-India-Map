@@ -71,6 +71,7 @@ LOCATIVE_WORDS = {"in", "at", "from", "near", "across", "around", "to", "of", "w
 ABBREVIATION_NOT_AFTER = {"a", "an", "the", "local", "party", "former", "sitting", "our", "his", "her", "their"}
 STATE_WORDS_AFTER = {"govt", "government", "health", "police", "cm", "minister", "ministers", "assembly", "cabinet",
                      "high", "hc", "board", "dept", "department", "news", "election", "elections", "bypoll", "bypolls"}
+DISTRICT_AFTER = re.compile(r"^\s*district\b", re.I)   # "Banda district": the district, not a same-named town
 PLACE_BEFORE = re.compile(r"\b(in|at|from|near|of|across|around|to)\s*$", re.I)
 PLACE_AFTER = re.compile(r"^\s*(village|town|taluk|tehsil|block|mandal|district|city|area|panchayat)\b", re.I)
 # Names worth sending to the geocoder: capitalised words only (no digits or codes like "H1N1", "IgM").
@@ -261,6 +262,8 @@ class LocationResolver:
             else:
                 stripped = re.sub(r"\s+(district|city|town|village|state)$", "", name, flags=re.I)
                 places = self._candidates(name) or self._candidates(stripped)
+                if re.search(r"\s+district$", name, flags=re.I) or DISTRICT_AFTER.match(doc.text[ent.end_char:]):
+                    places = [p for p in places if p.kind == "district"] or places   # "Banda district"
                 add(ent.text, ent.start_char, places, foreign=foreign_name(name, places))
             taken.update(range(ent.start, ent.end))
 
@@ -277,6 +280,8 @@ class LocationResolver:
             places = self._candidates(span.text)
             if not places:
                 continue
+            if DISTRICT_AFTER.match(doc.text[span.end_char:]):
+                places = [p for p in places if p.kind == "district"] or places   # "Banda district", not the town
             if all(p.kind == "town" for p in places) and not self._looks_like_place(span, doc, place_ents, places):
                 continue
             taken.update(range(start, end))

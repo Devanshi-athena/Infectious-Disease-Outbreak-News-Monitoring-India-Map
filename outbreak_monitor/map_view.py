@@ -24,7 +24,7 @@ from folium.plugins import Fullscreen
 from jinja2 import Template
 
 from .boundaries import DISTRICTS_FILE, _in_polygon
-from .dashboard_data import EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, _esc, published_ist
+from .dashboard_data import EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, _esc, href, published_ist
 
 INDIA_BOUNDS = [[6.5, 68.0], [37.2, 97.5]]
 PAN_LIMITS = [[3.0, 63.0], [40.0, 102.0]]
@@ -107,7 +107,7 @@ def state_bounds() -> dict[str, list[list[float]]]:
     return out
 
 
-def _district_of(code, lat, lon) -> int | None:
+def boundary_of(code, lat, lon) -> int | None:
     """The boundary (LGD code) a located item belongs to: its own district or, for a district created after the
     boundary edition, the district its point lies in. None for items placed only at state level."""
     if code is None or pd.isna(code):
@@ -158,19 +158,19 @@ def news_items(df: pd.DataFrame) -> list[dict]:
         disease_list = sorted({d for r in group for d in (r["diseases"] or [])})
         original = first["headline_original"] if isinstance(first["headline_original"], str) and \
             first["headline_original"] else None
-        sources = " · ".join(f'<a href="{_esc(r["article_url"])}" target="_blank" rel="noopener noreferrer">'
+        sources = " · ".join(f'<a href="{href(r["article_url"])}" target="_blank" rel="noopener noreferrer">'
                              f'{_esc(r["source_name"])}</a>' for r in group)
         card = (f'<div class="mc" style="border-left-color:{colour}">'
                 f'<div class="mc-top"><span class="mc-chip" style="color:{colour};background:{colour}1A">'
                 f'{EVENT_LABELS[status]}</span><span class="mc-dis">{_esc(", ".join(disease_list) or "—")}</span>'
                 f'<span class="mc-date">{_date(first["published_at"])}</span></div>'
-                f'<a class="mc-h" href="{_esc(first["article_url"])}" target="_blank" rel="noopener noreferrer">'
+                f'<a class="mc-h" href="{href(first["article_url"])}" target="_blank" rel="noopener noreferrer">'
                 f'{_esc(first["headline"])}</a>'
                 + (f'<div class="mc-o">{_esc(original)} · {_esc(first["language_name"])}</div>' if original else "")
                 + f'<div class="mc-m">{_esc(first["place"])}</div><div class="mc-s">{sources}</div></div>')
         code = None if _missing(first["district_lgd_code"]) else first["district_lgd_code"]
         items.append({"la": round(float(first["latitude"]), 4), "lo": round(float(first["longitude"]), 4),
-                      "dc": _district_of(code, first["latitude"], first["longitude"]),
+                      "dc": boundary_of(code, first["latitude"], first["longitude"]),
                       "st": _esc(first["state"]) if isinstance(first["state"], str) else "",
                       "s": status, "p": _esc(first["place"]), "h": _esc(first["headline"]), "c": card,
                       "t": str(first["published_at"]), "ds": disease_list})
@@ -194,25 +194,15 @@ def official_items(df: pd.DataFrame) -> list[dict]:
                 f'background:{OFFICIAL_COLOUR}1A">IDSP</span><span class="mc-dis">{_esc(r.week_label)}</span></div>'
                 f'<div class="mc-h">{_esc(title)}</div>'
                 f'<div class="mc-m">{_esc(place)} · started {onset} · {_esc(r.status)}</div>'
-                f'<div class="mc-s">ID {_esc(r.report_id)} · <a href="{_esc(r.report_url)}" target="_blank" '
+                f'<div class="mc-s">ID {_esc(r.report_id)} · <a href="{href(r.report_url)}" target="_blank" '
                 'rel="noopener noreferrer">weekly report (PDF)</a></div></div>')
         code = getattr(r, "district_lgd_code", None)
-        dc = (_district_of(code, r.latitude, r.longitude) if code is not None and not pd.isna(code)
+        dc = (boundary_of(code, r.latitude, r.longitude) if code is not None and not pd.isna(code)
               else district_at(float(r.longitude), float(r.latitude)) if r.location_level == "district" else None)
         items.append({"la": round(float(r.latitude), 4), "lo": round(float(r.longitude), 4), "dc": dc,
                       "st": _esc(r.state) if isinstance(r.state, str) else "",
                       "p": _esc(place), "h": _esc(title), "c": card})
     return items
-
-
-def district_code(name: str, state: str) -> int | None:
-    """The boundary (LGD code) of a district named as in the articles ("Sundargarh", "Odisha"), or None."""
-    def norm(text):
-        return "".join(ch for ch in str(text).lower() if ch.isalnum())
-    for d in topology()["districts"]:
-        if norm(d["name"]) == norm(name) and norm(d["state"]) == norm(state):
-            return d["dc"]
-    return None
 
 
 def district_counts(items: list[dict]) -> dict[int, dict]:
@@ -238,7 +228,7 @@ def alert_districts(alerts: pd.DataFrame | None) -> dict[int, dict]:
     if alerts is None or alerts.empty:
         return out
     for a in alerts[alerts["district_lgd_code"].notna()].itertuples():
-        dc = int(a.district_lgd_code)
+        dc = boundary_of(a.district_lgd_code, getattr(a, "latitude", None), getattr(a, "longitude", None))
         if dc not in _decoded():
             continue
         entry = out.setdefault(dc, {"rise": False, "list": []})
@@ -444,6 +434,7 @@ class IndiaMap(MacroElement):
     shape.on('tooltipopen', function () { if (selected === d.dc) this.closeTooltip(); });
     shape.on('click', function (e) {
       L.DomEvent.stopPropagation(e);
+      if (selected === d.dc) return;   // a click inside the open district (between its dots) keeps it open
       if (c || sec) select(d.dc); else clearSelection();
     });
     fills.addLayer(shape);
@@ -451,7 +442,7 @@ class IndiaMap(MacroElement):
   });
 
   // Both: districts that also have official IDSP records are hatched in green over the news shading
-  var hatching = L.layerGroup();
+  var hatching = L.layerGroup(), stripes = null;
   if (secondary) {
     var tile = document.createElement('canvas');
     tile.width = tile.height = 8;
@@ -464,7 +455,7 @@ class IndiaMap(MacroElement):
     g.moveTo(-1, 1); g.lineTo(1, -1);
     g.moveTo(7, 9); g.lineTo(9, 7);
     g.stroke();
-    var stripes = document.createElement('canvas').getContext('2d').createPattern(tile, 'repeat');
+    stripes = document.createElement('canvas').getContext('2d').createPattern(tile, 'repeat');
     var hatchCanvas = L.canvas({pane: 'hatch', padding: 0.3});
     topo.districts.forEach(function (d) {
       if (!D.official.counts[d.dc]) return;
@@ -539,7 +530,7 @@ class IndiaMap(MacroElement):
   // A selected district: it pops out (the rest of India dims), the map zooms to it, and its reports appear as
   // dots at their places (green squares: IDSP records). Clicking outside it, or closing the panel, goes back.
   var selected = null, selLayer = L.layerGroup().addTo(map), dots = L.layerGroup().addTo(map);
-  var selRenderer = L.svg({pane: 'sel', padding: 0.5});
+  var selRenderer = L.canvas({pane: 'sel', padding: 0.5});   // canvas: the IDSP stripe pattern draws on it
   var rank = {'new': 0, 'suspected': 1, 'unclear': 2, 'historical': 3};
   function addDots(items, official, district) {
     var groups = {};
@@ -579,9 +570,19 @@ class IndiaMap(MacroElement):
     clearSelection(true);
     selected = dc;
     var d = districts[dc], c = primary.counts[dc];
-    var shape = L.polygon(rings(d), {renderer: selRenderer, interactive: false, color: '#0B2545', weight: 2.5,
-                                     fillColor: c ? shadeOf(c.n) : D.land, fillOpacity: 1});
+    var fill = c ? {fillColor: shadeOf(c.n), fillOpacity: 1} : noDataStyle[base];
+    var shape = L.polygon(rings(d), L.extend({renderer: selRenderer, interactive: false, color: '#0B2545',
+                                              weight: 2.5}, fill));
     selLayer.addLayer(shape);
+    // what the district showed before it was opened stays on it: IDSP stripes and a red "rising" outline
+    if (secondary && D.official.counts[dc] && stripes) {
+      selLayer.addLayer(L.polygon(rings(d), {renderer: selRenderer, interactive: false, stroke: false,
+                                             fillColor: stripes, fillOpacity: 0.85}));
+    }
+    if (mode !== 'official' && D.alerts[dc] && D.alerts[dc].rise) {
+      selLayer.addLayer(L.polygon(rings(d), {renderer: selRenderer, interactive: false, fill: false,
+                                             color: D.alertColour, weight: 2.5}));
+    }
     el.classList.add('has-sel');
     addDots(primaryBy[dc], mode === 'official', d);
     if (secondary) addDots(secondaryBy[dc], true, d);

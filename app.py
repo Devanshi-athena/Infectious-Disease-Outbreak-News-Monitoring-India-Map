@@ -5,6 +5,7 @@
 
 import base64
 import html
+import logging
 import math
 import threading
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ from streamlit_folium import st_folium
 from outbreak_monitor.config import load_disease_config
 from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVENT_LABELS, FIRST_REPORT_WEEKS, IST,
                                              OFFICIAL_COLOUR, REVIEW_OPTIONS, RISE_FACTOR, RISE_MIN_REPORTS, VIEWS,
-                                             Filters, apply_filters, district_zoom_options, filter_official,
+                                             Filters, apply_filters, district_zoom_options, filter_official, href,
                                              latest_reports, lgd_label, load_articles, load_official, not_on_map,
                                              states_without_reports,
                                              official_state_disease_table, options,
@@ -26,7 +27,7 @@ from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVEN
 from outbreak_monitor.db import get_session_factory
 from outbreak_monitor.gazetteer import india_mask, load_boundary
 from outbreak_monitor.lgd import load as load_lgd
-from outbreak_monitor.map_view import (MODES, alert_districts, build_map, district_code, district_counts,
+from outbreak_monitor.map_view import (MODES, alert_districts, boundary_of, build_map, district_counts,
                                        news_items, official_items, state_bounds)
 
 LOGO = Path(__file__).parent / "assets" / "aplyd_logo.png"
@@ -169,8 +170,9 @@ def map_official_items(diseases: tuple, states: tuple) -> list[dict]:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def cached_alerts(diseases: tuple, states: tuple):
-    return outbreak_alerts(apply_filters(load(), Filters(diseases=list(diseases), states=list(states))))
+def cached_alerts(diseases: tuple, states: tuple, as_of=None):
+    """Alerts for the disease and state filters, as of the end of the chosen period (default: the latest report)."""
+    return outbreak_alerts(apply_filters(load(), Filters(diseases=list(diseases), states=list(states))), as_of)
 
 
 @st.cache_resource(show_spinner=False)
@@ -181,8 +183,10 @@ def india_mask_shape():
 
 @st.cache_resource(show_spinner=False)
 def refresh_job() -> dict:
-    """The "Refresh now" run in the background, shared by everyone using this dashboard."""
-    return {"thread": None, "started": None, "result": None}
+    """The "Refresh now" run in the background, shared by everyone using this dashboard. done_id counts finished
+    runs: a page whose data is older than the last finished run reloads it."""
+    return {"thread": None, "started": None, "finished": None, "result": None, "done_id": 0,
+            "lock": threading.Lock()}
 
 
 def refresh_running() -> bool:
@@ -194,19 +198,26 @@ def start_refresh():
     """A quick run (feeds and news sitemaps since the last run) in a background thread, so the dashboard stays
     usable. A second click while it runs does nothing; a scheduled run already in progress makes it skip."""
     job = refresh_job()
-    if refresh_running():
-        return
 
     def work():
-        from outbreak_monitor.collector import run_and_report  # heavy imports only when refreshing
         try:
+            from outbreak_monitor.collector import run_and_report  # heavy imports only when refreshing
             job["result"] = run_and_report(factory, quick=True)
-        except Exception as exc:  # shown in the sidebar; the details are in the log
+        except Exception as exc:  # shown in the sidebar
+            logging.getLogger(__name__).exception("Refresh now failed")
             job["result"] = {"status": "failed", "new": 0, "error": f"{type(exc).__name__}: {exc}"}
+        job["finished"] = datetime.now(IST)
+        job["done_id"] += 1
 
-    job.update(result=None, started=datetime.now(IST),
-               thread=threading.Thread(target=work, name="refresh-now", daemon=True))
-    job["thread"].start()
+    with job["lock"]:   # two clicks at once (two browser tabs) start one run
+        if refresh_running():
+            return
+        job.update(result=None, started=datetime.now(IST),
+                   thread=threading.Thread(target=work, name="refresh-now", daemon=True))
+        job["thread"].start()
+
+
+REFRESH_MESSAGE_FOR = timedelta(minutes=10)   # how long "Refresh done" stays in the sidebar
 
 
 @st.fragment(run_every=5)
@@ -223,14 +234,12 @@ def refresh_panel():
                 "it updates when the refresh is done.", icon=":material/sync:")
         return
     result = job["result"]
-    if result is None:
-        return
-    if "refresh_seen" not in st.session_state:   # this browser session started after the run: data is current
-        st.session_state["refresh_seen"] = result
-    if st.session_state["refresh_seen"] is not result:   # first look after the run: reload everything once
-        st.session_state["refresh_seen"] = result
+    if st.session_state["refresh_seen"] != job["done_id"]:   # a run finished after this page loaded its data
+        st.session_state["refresh_seen"] = job["done_id"]
         st.cache_data.clear()
         st.rerun(scope="app")
+    if result is None or datetime.now(IST) - job["finished"] > REFRESH_MESSAGE_FOR:
+        return
     if result["status"] == "skipped":
         st.info("A scheduled collection was already running; its articles appear when it finishes.",
                 icon=":material/schedule:")
@@ -256,6 +265,7 @@ def kpi(icon, colour, tint, label, value, hint, small=False):
             f'<div class="hint">{hint}</div></div></div>')
 
 
+st.session_state.setdefault("refresh_seen", refresh_job()["done_id"])
 articles = load()
 official = load_official_reports()
 no_news_states = states_without_reports(articles, load_lgd("states"))
@@ -310,7 +320,7 @@ news_on_map = map_news_items(tuple(tuple(v) if isinstance(v, list) else v for v 
 unmapped = not_on_map(matching)
 official_matching = filter_official(official, diseases, states)
 official_on_map = map_official_items(tuple(diseases), tuple(states))
-alerts = cached_alerts(tuple(diseases), tuple(states))
+alerts = cached_alerts(tuple(diseases), tuple(states), end)
 
 with factory() as session:
     totals = summary(matching, session)
@@ -360,9 +370,9 @@ with map_col:
                                label_visibility="collapsed")
     selected_district = None
     if zoom_choice in district_centres:
-        lat, lon = district_centres[zoom_choice]
+        lat, lon, code = district_centres[zoom_choice]
         focus, focus_zoom = [[lat - 0.45, lon - 0.45], [lat + 0.45, lon + 0.45]], None
-        selected_district = district_code(*zoom_choice.rsplit(", ", 1))   # opens selected, with its reports
+        selected_district = boundary_of(code, lat, lon)   # opens selected, with its reports
     elif zoom_choice in bounds_of_state:
         focus, focus_zoom = bounds_of_state[zoom_choice], 9
     elif len(states) == 1 and states[0] in bounds_of_state:
@@ -394,7 +404,7 @@ with side_col:
             f'<div class="report" style="border-left-color:{colour}">'
             f'<span class="chip" style="background:{colour}1A;color:{colour}">{EVENT_LABELS[r["event_status"]]}</span> '
             f'<span class="chip" style="background:#F1F4F9;color:#334155">{html.escape(r["diseases"] or "—")}</span>'
-            f'<div class="title"><a href="{html.escape(r["url"])}" target="_blank" rel="noopener noreferrer">'
+            f'<div class="title"><a href="{href(r["url"])}" target="_blank" rel="noopener noreferrer">'
             f'{html.escape(r["headline"])}</a></div>'
             + (f'<div class="meta" style="margin:-.15rem 0 .3rem 0">{html.escape(r["headline_original"])}</div>'
                if r["headline_original"] else "")
@@ -609,7 +619,8 @@ with register_tab:
            "source_name", "language_name", "article_url", "lgd", "location_level", "location_confidence",
            "review_flag", "content_type", "relevance", "relevance_status"]]
         edited = st.data_editor(
-            table, hide_index=True, width="stretch", height=460, key="articles",
+            table, hide_index=True, width="stretch", height=460,
+            key=f"articles-{hash(tuple(table['article_id']))}",   # edits never move to another article
             disabled=[c for c in table.columns if c != "relevance_status"],
             column_config={
                 "article_id": None,

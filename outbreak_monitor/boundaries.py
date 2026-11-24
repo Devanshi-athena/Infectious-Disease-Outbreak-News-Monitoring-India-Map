@@ -247,22 +247,25 @@ def _arcs(features: list[dict]):
 
 
 def _other_side(arc, owner: int, features, boxes) -> int | None:
-    """For an arc only one feature uses (the neighbour's outline differs slightly): the feature just across it,
-    found by stepping off the middle of the arc on the side away from its owner. None: outside India."""
-    i = len(arc) // 2 - 1 if len(arc) > 2 else 0
-    (x1, y1), (x2, y2) = arc[i], arc[i + 1]
-    mx, my = (x1 + x2) / 2 / GRID, (y1 + y2) / 2 / GRID
-    dx, dy = (x2 - x1) / GRID, (y2 - y1) / GRID
-    norm = (dx * dx + dy * dy) ** 0.5 or 1
-    for side in (1, -1):
-        px, py = mx - side * dy / norm * 2e-4, my + side * dx / norm * 2e-4   # about 20 m off the line
-        if any(_in_polygon(px, py, poly) for poly in _rings(features[owner]["geometry"])):
-            continue
-        for f, (x0, y0, x9, y9) in enumerate(boxes):
-            if f != owner and x0 <= px <= x9 and y0 <= py <= y9 and \
-                    any(_in_polygon(px, py, poly) for poly in _rings(features[f]["geometry"])):
-                return f
-        return None
+    """For an arc only one feature uses (the neighbour's outline differs from it): the feature across it, found by
+    stepping off the arc on the side away from its owner, at a few points along it and further each time (about
+    20 m, 200 m, 1 km), since the two outlines can lie apart. None: nothing there, the coast or India's border."""
+    owner_polys = _rings(features[owner]["geometry"])
+    n = len(arc)
+    for i in dict.fromkeys(max(0, min(n - 2, round(n * f) - 1)) for f in (0.5, 0.25, 0.75)):
+        (x1, y1), (x2, y2) = arc[i], arc[i + 1]
+        mx, my = (x1 + x2) / 2 / GRID, (y1 + y2) / 2 / GRID
+        dx, dy = (x2 - x1) / GRID, (y2 - y1) / GRID
+        norm = (dx * dx + dy * dy) ** 0.5 or 1
+        for step in (2e-4, 2e-3, 1e-2):
+            for side in (1, -1):
+                px, py = mx - side * dy / norm * step, my + side * dx / norm * step
+                if any(_in_polygon(px, py, poly) for poly in owner_polys):
+                    continue   # the owner's side
+                for f, (x0, y0, x9, y9) in enumerate(boxes):
+                    if f != owner and x0 <= px <= x9 and y0 <= py <= y9 and \
+                            any(_in_polygon(px, py, poly) for poly in _rings(features[f]["geometry"])):
+                        return f
     return None
 
 

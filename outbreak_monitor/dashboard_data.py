@@ -2,6 +2,7 @@
 Kept free of Streamlit so it can be tested on its own."""
 
 import html
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
@@ -72,7 +73,8 @@ def load_articles(session) -> pd.DataFrame:
     # A person's review decision overrides the automatic one.
     df["effective_relevance"] = [s if s in ("relevant", "irrelevant") else a
                                  for s, a in zip(df["relevance_status"], df["relevance"])]
-    df["published_date"] = pd.to_datetime(df["published_at"]).dt.date
+    # The date in India (times are stored in UTC): a report published at 2 am IST belongs to that day
+    df["published_date"] = (pd.to_datetime(df["published_at"]) + pd.Timedelta(hours=5, minutes=30)).dt.date
     df["place"] = [place_label(r) for r in df.itertuples()]
     return df
 
@@ -133,13 +135,17 @@ def summary(df: pd.DataFrame, session) -> dict:
             "last_refresh": to_ist(last.finished_at) if last else None}
 
 
-def district_zoom_options(df: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """'District, State' -> centre of the mapped reports in that district, for the zoom selector."""
+def district_zoom_options(df: pd.DataFrame) -> dict[str, tuple[float, float, int | None]]:
+    """'District, State' -> (centre of the mapped reports in that district, its LGD code), for the focus
+    selector. The code, not the name, finds the district's boundary (names are spelt differently)."""
     if df.empty:
         return {}
     located = df[(df["country"] == "India") & df["latitude"].notna() & df["district"].notna()]
-    centres = located.groupby(["district", "state"])[["latitude", "longitude"]].mean()
-    return {f"{d}, {s}": (float(lat), float(lon)) for (d, s), (lat, lon) in sorted(centres.iterrows())}
+    groups = located.groupby(["district", "state"])
+    centres = groups[["latitude", "longitude"]].mean()
+    codes = groups["district_lgd_code"].agg(lambda c: c.dropna().mode().iloc[0] if c.notna().any() else None)
+    return {f"{d}, {s}": (float(lat), float(lon), None if pd.isna(codes[(d, s)]) else int(codes[(d, s)]))
+            for (d, s), (lat, lon) in sorted(centres.iterrows())}
 
 
 def _state_disease_table(rows: pd.DataFrame, key: str, disease_order: list[str] | None) -> pd.DataFrame:
@@ -211,6 +217,13 @@ def story_markers(df: pd.DataFrame) -> list[StoryMarker]:
     return markers
 
 
+def href(url) -> str:
+    """A link target for a card: escaped, and only http(s), so that a stored URL can never run script
+    ("javascript:")."""
+    text = "" if url is None or (isinstance(url, float) and pd.isna(url)) else str(url).strip()
+    return html.escape(text) if text.lower().startswith(("https://", "http://")) else "#"
+
+
 def _esc(value) -> str:
     """HTML-escape a value from an external site (headlines, URLs, names); '—' if missing."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -243,7 +256,7 @@ def popup_html(group: pd.DataFrame) -> str:
     review = (" · <span style='color:#D64545;font-weight:600'>location needs review</span>"
               if bool(first["location_review"]) else "")
     sources = "".join(
-        f"<li style='margin:2px 0'><a href=\"{_esc(r.article_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
+        f"<li style='margin:2px 0'><a href=\"{href(r.article_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
         f"style='color:#1554A6;font-weight:500'>{_esc(r.source_name)}</a></li>" for r in group.itertuples())
     return (
         "<div style=\"font-family:Inter,'Segoe UI',Arial,sans-serif;font-size:13px;color:#172033;width:320px\">"
@@ -285,8 +298,8 @@ def states_without_reports(df: pd.DataFrame, all_states: list[dict]) -> list[str
     ("states") rows)."""
     covered = set(df.loc[(df["effective_relevance"] == "relevant") & (df["country"] == "India"),
                          "state_lgd_code"].dropna().astype(int)) if not df.empty else set()
-    return sorted(s["state"].replace(" And ", " and ").replace(" Of ", " of ") for s in all_states
-                  if int(s["state_code"]) not in covered)
+    return sorted(re.sub(r" (And|Of) ", lambda m: f" {m.group(1).lower()} ", re.sub(r"^The ", "", s["state"]))
+                  for s in all_states if int(s["state_code"]) not in covered)
 
 
 def save_reviews(session, changes: dict[int, str]) -> int:
@@ -353,7 +366,7 @@ def official_popup_html(r) -> str:
         f"<div style='margin:2px 0'>📅 Started {day(r.onset_date)} · reported {day(r.reported_date)}</div>"
         f"<div style='margin:2px 0'>Status: {_esc(r.status)}</div>"
         f"<div style='margin:6px 0 2px 0;color:#5A687D;font-size:12px'>ID {_esc(r.report_id)} · {_esc(r.week_label)}"
-        f" · <a href=\"{_esc(r.report_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
+        f" · <a href=\"{href(r.report_url)}\" target=\"_blank\" rel=\"noopener noreferrer\" "
         "style='color:#1554A6;font-weight:500'>weekly report (PDF)</a></div></div></div>")
 
 
@@ -437,6 +450,7 @@ def outbreak_alerts(df: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame
                         latest=latest["published_date"], headline=latest["headline"],
                         article_url=latest["article_url"], state_lgd_code=latest["state_lgd_code"],
                         district_lgd_code=latest["district_lgd_code"] if district else None,
+                        latitude=latest.get("latitude"), longitude=latest.get("longitude"),
                         as_of=as_of))
     alerts = pd.DataFrame(out)
     if alerts.empty:

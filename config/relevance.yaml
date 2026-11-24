@@ -210,7 +210,6 @@ historical:
   - decade ago
   - decades ago
   - in the past
-  - history
   - historic outbreak
   - anniversary
   - recalled
@@ -262,6 +261,10 @@ past_event:
   - covid compensation
   - post-covid
   - post covid
+  - during lockdown
+  - during the lockdown
+  - during covid
+  - during the pandemic
 
 # A disease named only as a comparison does not count as mentioned: "Ebola is like Covid pandemic",
 # "worse than dengue". The word must come right before the disease name (an optional "the"/"a" between).

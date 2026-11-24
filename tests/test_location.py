@@ -215,3 +215,10 @@ def test_ambiguous_abbreviations_need_context(resolver, headline, state):
 def test_names_shared_with_foreign_places(resolver, headline, place):
     r = locate(resolver, headline)
     assert (r.country, r.state) == place
+
+
+def test_a_name_followed_by_district_is_the_district(resolver):
+    # Naraini is listed in the reference data under Madhya Pradesh; "Banda district" still decides
+    r = locate(resolver, "Three injured in dengue outbreak in Banda district",
+               "Three people fell ill with dengue in Banda district's Naraini area.")
+    assert (r.state, r.district) == ("Uttar Pradesh", "Banda")

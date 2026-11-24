@@ -1,3 +1,4 @@
+import pandas as pd
 from datetime import date, datetime
 
 import pytest
@@ -109,7 +110,7 @@ def test_district_zoom_options(factory):
     with factory() as s:
         df = apply_filters(load_articles(s), Filters())
     zoom = district_zoom_options(df)
-    assert list(zoom) == ["Kozhikode, Kerala", "Pune, Maharashtra"] and zoom["Pune, Maharashtra"] == (18.5, 73.8)
+    assert list(zoom) == ["Kozhikode, Kerala", "Pune, Maharashtra"] and zoom["Pune, Maharashtra"][:2] == (18.5, 73.8)
 
 
 def test_save_reviews(factory):
@@ -297,3 +298,20 @@ def test_map_renders_without_foreign_tiles():
         assert '"maxZoom": 16' in page
         # the card is escaped so that data cannot close the script element; official mode carries no news items
         assert (r'<b>x<\/b>' in page) == (mode != "official")
+
+
+def test_card_links_are_http_only_and_state_names_read_naturally():
+    from outbreak_monitor.dashboard_data import href, states_without_reports
+    assert href("https://a.in/x?a=1&b=2") == "https://a.in/x?a=1&amp;b=2"
+    assert href("javascript:alert(1)") == "#" and href(None) == "#"
+    states = [{"state_code": "38", "state": "The Dadra And Nagar Haveli And Daman And Diu"},
+              {"state_code": "1", "state": "Jammu And Kashmir"}]
+    assert states_without_reports(pd.DataFrame(), states) == ["Dadra and Nagar Haveli and Daman and Diu",
+                                                               "Jammu and Kashmir"]
+
+
+def test_alert_in_a_new_district_is_placed_by_its_point():
+    from outbreak_monitor.map_view import alert_districts, district_at
+    alerts = pd.DataFrame([{"alert": "Rise", "disease": "Dengue", "reports": 4, "district_lgd_code": 791,   # Polavaram
+                            "latitude": 17.25, "longitude": 81.64}])
+    assert list(alert_districts(alerts)) == [district_at(81.64, 17.25)]

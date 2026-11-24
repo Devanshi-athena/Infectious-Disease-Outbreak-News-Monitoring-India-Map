@@ -260,3 +260,24 @@ def test_reports_written_like_explainers_stay_reports(classify, headline, body):
 def test_dead_alone_does_not_make_a_report(classify):
     r = classify("Dead mosquitoes and dengue: can a dead mosquito still spread dengue?", "Dengue spreads by bites.")
     assert r.relevance == "irrelevant"
+
+
+@pytest.mark.parametrize("headline,body,expected", [
+    ("Nearly 100 fall ill after eating pani puri from street vendor", "Food poisoning was suspected. The typhoid "
+     "ward was full. Typhoid tests were done. Typhoid cases were treated.", ("relevant", "outbreak_report")),
+    ("38 patients treated at health camp in Pune", "Dengue tests were done. Dengue awareness was given. Dengue kits "
+     "were distributed.", ("irrelevant", "passing_mention")),
+    ("70 per cent of people in Pune have dengue antibodies, says survey", "Dengue antibodies were found. Dengue "
+     "spread is common. Dengue survey ended.", ("irrelevant", "other")),
+])
+def test_counts_in_the_headline(classify, headline, body, expected):
+    assert classify(headline, body).relevance == expected[0]
+
+
+def test_years_and_history(classify):
+    assert classify("Kerala records highest dengue cases in history; 3 deaths",
+                    "Kerala recorded 4,000 dengue cases.").event_status == "new"
+    assert classify("Mughal emperor died of typhoid in 1605, historians say", "He died of typhoid.").event_status \
+        == "historical"
+    assert classify("1605 dengue cases recorded in Pune this month", "Pune recorded 1605 dengue cases.").event_status \
+        == "new"
