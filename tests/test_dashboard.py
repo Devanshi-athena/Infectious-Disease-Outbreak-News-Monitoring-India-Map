@@ -262,6 +262,17 @@ def test_district_boundaries_cover_lgd_and_decode():
     assert 8 < s < 9 and 12 < n < 13 and 74 < w < 75.5 and 77 < e < 78
 
 
+def test_every_island_is_kept_and_small_islands_have_an_outline():
+    from outbreak_monitor.map_view import island_halos, topology
+    parts = {d["name"]: len(d["polygons"]) for d in topology()["districts"]}
+    # as many islands as the source file: none lost to simplification
+    assert (parts["Lakshadweep"], parts["Nicobars"], parts["South Andamans"]) == (11, 19, 34)
+    lakshadweep = next(d["dc"] for d in topology()["districts"] if d["name"] == "Lakshadweep")
+    assert list(island_halos()) == [lakshadweep]                      # only a group too small to see gets one
+    lats, lons = zip(*island_halos()[lakshadweep])
+    assert 7.5 < min(lats) and max(lats) < 12.5 and 71.5 < min(lons) and max(lons) < 74.5
+
+
 def test_district_counts_count_stories_once():
     import pandas as pd
     from outbreak_monitor.map_view import district_counts, news_items, shade

@@ -282,10 +282,19 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
             if other is not None:
                 own.append(other)
     # Simplify each arc once, then store it in units of 1/SCALE degree
-    quantised = []
-    for arc in arcs:
-        q = [(round(x / GRID * SCALE), round(y / GRID * SCALE)) for x, y in _simplify(arc, tolerance * GRID)]
-        quantised.append([p for i, p in enumerate(q) if i == 0 or p != q[i - 1]])
+    def simplified(arc, tol):
+        q = [(round(x / GRID * SCALE), round(y / GRID * SCALE)) for x, y in _simplify(arc, tol * GRID)]
+        return [p for i, p in enumerate(q) if i == 0 or p != q[i - 1]]
+
+    def arc_tolerance(arc, own):
+        """An island (a closed outline no other area shares) is simplified in proportion to its size, so a small
+        island keeps its shape instead of becoming a sliver; every other line at the full tolerance."""
+        if len(set(own)) > 1 or arc[0] != arc[-1]:
+            return tolerance
+        xs, ys = [p[0] for p in arc], [p[1] for p in arc]
+        return min(tolerance, max(max(xs) - min(xs), max(ys) - min(ys)) / GRID / 15)
+
+    quantised = [simplified(arc, arc_tolerance(arc, own)) for arc, own in zip(arcs, owners)]
 
     def ring_points(ring_arcs):
         points = []
@@ -293,6 +302,16 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
             pts = quantised[a][::-1] if flip else quantised[a]
             points += pts if not points else pts[1:]
         return [(x / SCALE, y / SCALE) for x, y in points]
+
+    # A small island would flatten into a line at the full tolerance and vanish: its outline is simplified more
+    # finely instead, so every island of a district (Lakshadweep, Andaman and Nicobar) stays on the map
+    for polys in feature_rings:
+        for rings in polys:
+            for tol in (tolerance / 4, tolerance / 16, 0):
+                if len(ring_points(rings[0])) >= 4:
+                    break
+                for a, _ in rings[0]:
+                    quantised[a] = simplified(arcs[a], tol)
 
     used, refs = {}, []   # arcs that are drawn get new, dense ids
 
@@ -309,7 +328,7 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
             continue
         for rings in polys:
             outer = ring_points(rings[0])
-            if len(outer) < 4 or _area(outer) < 1e-6:
+            if len(outer) < 4 or _area(outer) < 1e-8:   # only a speck smaller than the stored grid
                 continue
             kept = [rings[0]] + [r for r in rings[1:] if len(ring_points(r)) >= 4]
             by_district[props["dc"]].append((outer, [[ref(a, flip) for a, flip in r] for r in kept], props))

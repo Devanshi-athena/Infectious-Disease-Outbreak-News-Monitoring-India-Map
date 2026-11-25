@@ -13,6 +13,7 @@ outside India's official boundary is covered.
 
 import html
 import json
+import math
 from datetime import date
 from functools import lru_cache
 
@@ -81,6 +82,43 @@ def _decoded() -> dict[int, list]:
             polys.append(rings)
         out[d["dc"]] = polys
     return out
+
+
+SMALL_ISLANDS_AREA = 0.02   # square degrees (~250 km2): a district of islands this small is hard to see or hover
+ISLAND_HALO_DEG = 0.12      # the outline drawn around such a group of islands lies ~13 km off its islands
+
+
+@lru_cache(maxsize=1)
+def island_halos() -> dict[int, list[list[float]]]:
+    """dc -> a rounded outline ([lat, lon] points) around a district made only of small islands (Lakshadweep), drawn
+    dashed around the group, as on official maps, so the district can be seen, shaded and hovered at any zoom."""
+    topo = topology()
+    shared = {a for kind in ("district", "state") for a in topo["lines"][kind]}
+    out = {}
+    for d in topo["districts"]:
+        arcs = {~r if r < 0 else r for poly in d["polygons"] for ring in poly for r in ring}
+        if d["area"] >= SMALL_ISLANDS_AREA or arcs & shared:
+            continue
+        points = [(x + ISLAND_HALO_DEG * math.cos(t * math.pi / 8), y + ISLAND_HALO_DEG * math.sin(t * math.pi / 8))
+                  for poly in _decoded()[d["dc"]] for x, y in poly[0] for t in range(16)]
+        out[d["dc"]] = [[round(y, 3), round(x, 3)] for x, y in _convex_hull(points)]
+    return out
+
+
+def _convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Andrew's monotone chain."""
+    pts = sorted(set(points))
+
+    def half(seq):
+        chain = []
+        for p in seq:
+            while len(chain) >= 2 and ((chain[-1][0] - chain[-2][0]) * (p[1] - chain[-2][1]) -
+                                       (chain[-1][1] - chain[-2][1]) * (p[0] - chain[-2][0])) <= 0:
+                chain.pop()
+            chain.append(p)
+        return chain[:-1]
+
+    return half(pts) + half(reversed(pts))
 
 
 def district_at(lon: float, lat: float) -> int | None:
@@ -247,15 +285,12 @@ class IndiaMap(MacroElement):
   .lbl { pointer-events: none; text-align: center; color: #243247; line-height: 1.15; white-space: normal;
          text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff; }
   .lbl-s { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #3A4A63; }
-  .lbl-s.small { display: none; }
-  .zge6 .lbl-s.small { display: block; }
-  .zge9 .lbl-s { display: none; }
   .lbl-d { font-size: 10.5px; font-weight: 500; color: #5A687D; }
   .lbl-d.sel { font-size: 12.5px; font-weight: 700; color: #0B2545; }
   .imagery .lbl { color: #fff; text-shadow: 0 0 2px #000, 0 0 3px #000, 0 0 4px #000; }
   /* a selected district pops out: the rest dims, the district casts a shadow */
-  .leaflet-fill-pane, .leaflet-hatch-pane, .leaflet-alerts-pane { transition: opacity .25s ease; }
-  .has-sel .leaflet-fill-pane, .has-sel .leaflet-hatch-pane { opacity: .4; }
+  .leaflet-fill-pane, .leaflet-hatch-pane, .leaflet-halo-pane, .leaflet-alerts-pane { transition: opacity .25s ease; }
+  .has-sel .leaflet-fill-pane, .has-sel .leaflet-hatch-pane, .has-sel .leaflet-halo-pane { opacity: .4; }
   .has-sel .leaflet-alerts-pane { opacity: .35; }
   .has-sel .leaflet-pills-pane { display: none; }
   .leaflet-sel-pane { filter: drop-shadow(0 10px 14px rgba(11,37,69,.45)); }
@@ -320,11 +355,14 @@ class IndiaMap(MacroElement):
   var primary = mode === 'official' ? D.official : D.news;           // shading and dots
   var secondary = mode === 'both' ? D.official : null;              // green squares beside them
   var shades = D.shades[mode === 'official' ? 'official' : 'news'], breaks = D.breaks;
-  [['fill', 350], ['hatch', 352], ['mask', 390], ['borders', 395], ['alerts', 396], ['sel', 398], ['labels', 420],
-   ['pills', 640]].forEach(function (p) {
+  [['fill', 350], ['hatch', 352], ['mask', 390], ['halo', 392], ['borders', 395], ['alerts', 396], ['sel', 398],
+   ['labels', 420], ['pills', 640]].forEach(function (p) {
     map.createPane(p[0]).style.zIndex = p[1];
     if (p[0] !== 'fill' && p[0] !== 'pills') map.getPane(p[0]).style.pointerEvents = 'none';
   });
+  // The island outline is drawn above the mask (it lies at sea); a canvas covers the whole map, so this one takes no
+  // mouse events, and an invisible copy among the district fills answers hover and click instead
+  var haloCanvas = L.canvas({pane: 'halo', padding: 0.3});
   var fillCanvas = L.canvas({pane: 'fill', padding: 0.3}), lineCanvas = L.canvas({pane: 'borders', padding: 0.3});
   var alertCanvas = L.canvas({pane: 'alerts', padding: 0.3});
 
@@ -422,9 +460,34 @@ class IndiaMap(MacroElement):
                      Satellite: {fillColor: '#FFFFFF', fillOpacity: 0}};
   var shapes = [];
   var fills = L.layerGroup().addTo(map);
+  // The land inside India's official outline, under the districts: where the district file stops a little short of
+  // the outline, the strip still reads as land
+  var officialOutline = D.mask.geometry.coordinates.slice(1).map(function (r) {
+    return r.map(function (p) { return [p[1], p[0]]; });
+  });
+  var officialLand = L.polygon(officialOutline, L.extend({renderer: fillCanvas, stroke: false, fill: true,
+                                                          interactive: false}, noDataStyle.Plain));
+  officialLand._has = false;
+  fills.addLayer(officialLand);
+  shapes.push(officialLand);
   function rings(d) { return d.polygons.map(function (p) { return p.map(ring); }); }
   topo.districts.forEach(function (d) {
     var c = primary.counts[d.dc], sec = secondary && D.official.counts[d.dc];
+    var halo = D.halos[d.dc];
+    if (halo) {   // a group of very small islands (Lakshadweep): a dashed outline around it, shaded like the district
+      fills.addLayer(L.polygon(halo, {renderer: haloCanvas, interactive: false, color: '#5A687D', weight: 1.2,
+                                      dashArray: '5 4', fill: true, fillOpacity: c || sec ? 0.35 : 0,
+                                      fillColor: c ? shadeOf(c.n) : (sec ? D.officialColour : D.land)}));
+      halo = L.polygon(halo, {renderer: fillCanvas, stroke: false, fill: true, fillOpacity: 0});
+      halo.bindTooltip(districtTip(d), {sticky: true, className: 'dtip', direction: 'top', offset: [0, -8], opacity: 1});
+      halo.on('tooltipopen', function () { if (selected === d.dc) this.closeTooltip(); });
+      halo.on('click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        if (selected === d.dc) return;
+        if (c || sec) select(d.dc); else clearSelection();
+      });
+      fills.addLayer(halo);
+    }
     var shape = L.polygon(rings(d), {
       renderer: fillCanvas, stroke: false, fill: true, smoothFactor: 1.2,
       fillColor: c ? shadeOf(c.n) : D.land, fillOpacity: c ? 0.85 : 1
@@ -471,12 +534,16 @@ class IndiaMap(MacroElement):
 
   // Borders: districts, states, India; districts where reports are rising outlined in red
   var lines = {};
-  [['district', '#A3ACBA', 0.5], ['state', '#5B6B84', 1.3], ['india', '#33435C', 1.6]].forEach(function (s) {
+  [['district', '#A3ACBA', 0.5], ['state', '#5B6B84', 1.3]].forEach(function (s) {
     lines[s[0]] = L.polyline(topo.lines[s[0]].map(function (i) { return arcs[i]; }), {
       renderer: lineCanvas, color: s[1], weight: s[2], opacity: 0.95, interactive: false, smoothFactor: 1.2,
       lineJoin: 'round'
     }).addTo(map);
   });
+  // India's border and coast: the official outline itself (the edge of the mask), so the district colours, which the
+  // mask cuts at that outline, always end exactly at the line
+  lines.india = L.polyline(officialOutline, {renderer: lineCanvas, color: '#33435C', weight: 1.6, opacity: 0.95,
+                                             interactive: false, smoothFactor: 1.2, lineJoin: 'round'}).addTo(map);
   var alertLines = L.layerGroup().addTo(map);
   if (mode !== 'official') {
     Object.keys(D.alerts).forEach(function (dc) {
@@ -493,17 +560,41 @@ class IndiaMap(MacroElement):
       icon: L.divIcon({className: '', iconSize: [150, 30], iconAnchor: [75, 15],
                        html: '<div class="lbl ' + cls + '">' + text + '</div>'})});
   }
-  var districtNames = L.layerGroup();
-  var names = L.layerGroup([L.layerGroup(topo.states.map(function (s) {
-    return label(s.label, s.ly, s.lx, 'lbl-s' + (s.area < 1.2 ? ' small' : ''));
-  })), districtNames]).addTo(map);
+  // State and district names are placed together, most important first (the selected district, then states, then
+  // larger states and districts first); a name that would overlap one already placed is left out, so names never
+  // print over names. A name left out appears when the map is zoomed in further.
+  var names = L.layerGroup().addTo(map);
+  var byArea = topo.districts.slice().sort(function (a, b) { return b.area - a.area; });
+  var statesByArea = topo.states.slice().sort(function (a, b) { return b.area - a.area; });
+  function labelBox(text, lat, lng, charWidth, lineHeight) {
+    var width = text.length * charWidth, lines = Math.max(1, Math.ceil(width / 146));
+    var w = Math.min(width, 146), h = lines * lineHeight, p = map.latLngToContainerPoint([lat, lng]);
+    return [p.x - w / 2 - 2, p.y - h / 2, p.x + w / 2 + 2, p.y + h / 2];
+  }
   function refreshDistrictNames() {
-    districtNames.clearLayers();
-    var z = map.getZoom(), view = map.getBounds().pad(0.15);
-    topo.districts.forEach(function (d) {
-      var isSel = d.dc === selected;
-      if (!isSel && (z < 7 || (z < 8 && d.area <= 0.35) || !view.contains([d.ly, d.lx]))) return;
-      districtNames.addLayer(label(d.name, d.ly, d.lx, 'lbl-d' + (isSel ? ' sel' : '')));
+    names.clearLayers();
+    var z = map.getZoom(), view = map.getBounds().pad(0.15), placed = [];
+    function place(text, lat, lng, cls, charWidth, lineHeight) {
+      if (!view.contains([lat, lng])) return;
+      var b = labelBox(text, lat, lng, charWidth, lineHeight);
+      for (var i = 0; i < placed.length; i++) {
+        var o = placed[i];
+        if (b[0] < o[2] && o[0] < b[2] && b[1] < o[3] && o[1] < b[3]) return;
+      }
+      placed.push(b);
+      names.addLayer(label(text, lat, lng, cls));
+    }
+    if (selected !== null) {
+      var s = districts[selected];
+      place(s.name, s.ly, s.lx, 'lbl-d sel', 7.2, 15);
+    }
+    if (z < 9) statesByArea.forEach(function (s) {
+      if (s.area >= 1.2 || z >= 6) place(s.label, s.ly, s.lx, 'lbl-s', 8.4, 12);
+    });
+    if (z >= 7) byArea.forEach(function (d) {
+      if (d.dc === selected || (z < 8 && d.area <= 0.35)) return;
+      if (d.name.toLowerCase() === d.state.toLowerCase()) return;   // the state's own name already shows it (Lakshadweep, Chandigarh)
+      place(d.name, d.ly, d.lx, 'lbl-d', 6, 12.5);
     });
   }
 
@@ -696,11 +787,20 @@ def build_map(news: list[dict], official: list[dict], news_counts: dict, officia
                       max_bounds=True, min_lat=PAN_LIMITS[0][0], max_lat=PAN_LIMITS[1][0],
                       min_lon=PAN_LIMITS[0][1], max_lon=PAN_LIMITS[1][1], zoomSnap=0.25, zoomDelta=0.5)
     topo = dict(topology())
-    topo["states"] = [{**s, "label": STATE_LABELS.get(s["name"], s["name"])} for s in topo["states"]]
+    halos = island_halos()
+    centre = {}   # a state of small islands only (Lakshadweep): its name goes in the middle of the outline
+    for d in topo["districts"]:
+        if d["dc"] in halos:
+            pts = halos[d["dc"]]
+            centre[d["state"]] = (sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts))
+    whole = {s for s in centre if all(d["dc"] in halos for d in topo["districts"] if d["state"] == s)}
+    topo["states"] = [{**s, "label": STATE_LABELS.get(s["name"], s["name"]),
+                       **({"lx": round(centre[s["name"]][0], 3), "ly": round(centre[s["name"]][1], 3)}
+                          if s["name"] in whole else {})} for s in topo["states"]]
     topo["districts"] = [{**d, "name": html.escape(d["name"]), "state": html.escape(d["state"])}
                          for d in topo["districts"]]
     data = {
-        "topo": topo, "mode": mode, "mask": mask, "select": select,
+        "topo": topo, "mode": mode, "mask": mask, "select": select, "halos": halos,
         "news": {"items": [{k: v for k, v in i.items() if k != "ds"} for i in news] if mode != "official" else [],
                  "counts": news_counts},
         "official": {"items": official if mode != "news" else [], "counts": official_counts},
