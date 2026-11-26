@@ -8,25 +8,31 @@ reference/india_districts.json, a compact topology (the idea of TopoJSON):
              (lx, ly), and its polygons as rings of arc ids (~id: the arc runs backwards)
   states     one per state / union territory: name, code and a label point
   lines      arc ids of the borders between districts, between states, and of India's border and coast
+  disputed   the areas SOI marks disputed between two states, as polygons: land of India in no district
 
-Source: district boundaries of India (2023 edition, follows the official boundary of India, MIT licence) from
-https://github.com/datta07/INDIAN-SHAPEFILES. Names in the source are partly garbled ("K>NGRA", "Bengal#ru") and its
-codes mix LGD and Census 2011 codes, so each polygon is matched to the LGD list by code and name within its state.
-Districts created after that edition (e.g. the new districts of Ladakh and Delhi) are drawn inside the district they
-were carved from; districts abolished since (Rajasthan, December 2024) are merged back into their parent district.
+Source: the Survey of India Administrative Boundary Database (district level, 1:1 million), from
+https://onlinemaps.surveyofindia.gov.in (Digital Products), as published with attribute and invalid-geometry
+corrections in https://github.com/surajreddyr/India-State-District-Administrative-Boundaries-Shapefiles. Its
+coordinates are in the Lambert Conformal Conic projection of India on WGS 84 (lcc_to_lonlat), and every district
+carries its LGD code, so districts are linked to the LGD list by code. Districts created after that edition are drawn
+inside the district they were carved from. The India outline, state and district borders all come from this one
+source, so they meet exactly.
 
 Shared borders are simplified once, as lines between junctions, so neighbouring districts stay aligned and
 no gaps open between them (the method of topology-aware GIS tools such as mapshaper and QGIS).
 """
 
 import csv
+import io
 import json
+import math
 import re
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 
 import requests
-from rapidfuzz import fuzz, process
+import shapefile
 
 from .gazetteer import _simplify
 
@@ -34,46 +40,57 @@ ROOT = Path(__file__).resolve().parent.parent
 REFERENCE_DIR = ROOT / "reference"
 RAW_DIR = ROOT / "data" / "reference"
 DISTRICTS_FILE = REFERENCE_DIR / "india_districts.json"
-SOURCE_URL = "https://raw.githubusercontent.com/datta07/INDIAN-SHAPEFILES/master/INDIA/INDIA_DISTRICTS.geojson"
+SOI_DIR = RAW_DIR / "soi"
+SOI_DISTRICTS = SOI_DIR / "DISTRICT_BOUNDARY_Corrected.shp"
+SOI_REPO = "https://raw.githubusercontent.com/surajreddyr/India-State-District-Administrative-Boundaries-Shapefiles/main/"
+SOI_PARTS = ("India_ADMIN_SOI_Districts.zip.001", "India_ADMIN_SOI_Districts.zip.002")
 TOLERANCE_DEG = 0.006   # about 600 m: smooth down to district zoom
 GRID = 1e5              # coordinates are compared at 1e-5 degrees (about 1 m)
 SCALE = 1000            # and stored in 1/1000 degree (about 100 m)
 
-# Source state names that are not LGD names
-STATE_ALIASES = {"DADRA & NAGAR HAVELI & DAMAN & DIU": "The Dadra And Nagar Haveli And Daman And Diu"}
-# (LGD state, source district) -> LGD district: renamed districts, and districts abolished in Rajasthan in
-# December 2024 that went back to their parent district
-DISTRICT_ALIASES = {
-    ("Rajasthan", "DUDU"): "Jaipur", ("Rajasthan", "JAIPUR(GRAMIN)"): "Jaipur",
-    ("Rajasthan", "JODHPUR GRAMIN"): "Jodhpur", ("Rajasthan", "KEKRI"): "Ajmer",
-    ("Rajasthan", "NEEM-KA-THANA"): "Sikar", ("Rajasthan", "SANCHORE"): "Jalore",
-    ("Rajasthan", "GANGAPURCITY"): "Sawai Madhopur", ("Rajasthan", "SHAHPURA"): "Bhilwara",
-    ("Rajasthan", "ANOOPGARH"): "Ganganagar",
-    ("Delhi", "NAZUL"): "Central",
-    ("Puducherry", "YANAM"): "Puducherry", ("Puducherry", "MAHE"): "Puducherry",
-    ("West Bengal", "HUGLI"): "Hooghly", ("West Bengal", "H>ORA"): "Howrah",
-    ("West Bengal", "KOCH BIH>R"): "Cooch Behar", ("Odisha", "CUTTACK"): "Kataka",
-    ("Odisha", "BALASORE"): "Baleshwar", ("Odisha", "DEOGARH"): "Debagada", ("Odisha", "BARGARH"): "Baragada",
-    ("Maharashtra", "AHMEDNAGAR"): "Ahilyanagar", ("Maharashtra", "RAIGARH"): "Raigad",
-    ("Assam", "KARIMGANJ"): "Sribhumi", ("Ladakh", "LEH"): "Leh Ladakh",
-    ("Karnataka", "R"): "Bengaluru South",   # Ramanagara, renamed in 2025
-    ("Telangana", "KOMARRAM BHEEM"): "Kumuram Bheem Asifabad", ("Telangana", "WANPARTI"): "Wanaparthy",
-    ("Chhattisgarh", "KAWARDHA (KABIRDHAM)"): "Kabeerdham",
-}
 # LGD names shown on the map in their common English form (LGD uses Odia spellings for Odisha's districts);
 # the LGD code is still shown with them
 COMMON_NAMES = {"Kataka": "Cuttack", "Baleshwar": "Balasore", "Debagada": "Deogarh", "Baragada": "Bargarh",
                 "Anugola": "Angul", "Sundaragada": "Sundargarh", "Nayagada": "Nayagarh", "Kendrapada": "Kendrapara",
                 "Kandhamala": "Kandhamal", "Kendujhar": "Keonjhar", "Jagatsinghapur": "Jagatsinghpur",
                 "Lakshadweep District": "Lakshadweep", "Leh Ladakh": "Leh", "Lahaul And Spiti": "Lahaul and Spiti"}
-# Districts with a boundary but no LGD entry: shown with their own name (no LGD code)
-UNLINKED_NAMES = {"MIRPUR": "Mirpur", "MUZAFFARABAD": "Muzaffarabad", "SHAHADARA": "Shahdara"}
-# Characters the source uses in place of accented letters
-GARBLED = str.maketrans({">": "a", "|": "i", "@": "u", "#": "u", "\\": "i"})
+# SOI districts whose code is not in the LGD list: LGD counts Mahe and Yanam as parts of Puducherry district
+PART_OF = {"MAHE": 600, "YANAM": 600}
+# Districts with a boundary but no LGD entry: shown with their own name and a code of their own below zero
+UNLINKED = {"MIRPUR": (-1, "Mirpur"), "MUZAFFARABAD": (-2, "Muzaffarabad"), "SHAHADRA": (-3, "Shahdara")}
+
+# The SOI projection: Lambert Conformal Conic on WGS 84 (the same as EPSG:7755, WGS 84 / India NSF LCC)
+_A, _F = 6378137.0, 1 / 298.257223563
+_E = math.sqrt(2 * _F - _F * _F)
+_LAT1, _LAT2, _LAT0, _LON0 = (math.radians(v) for v in (12.472944, 35.172806, 24.0, 80.0))
+_FALSE_EASTING = _FALSE_NORTHING = 4_000_000.0
 
 
-def _norm(name: str) -> str:
-    return re.sub(r"[^a-z]", "", name.translate(GARBLED).lower().replace("&", "and"))
+def _m(lat):
+    return math.cos(lat) / math.sqrt(1 - (_E * math.sin(lat)) ** 2)
+
+
+def _t(lat):
+    s = _E * math.sin(lat)
+    return math.tan(math.pi / 4 - lat / 2) / ((1 - s) / (1 + s)) ** (_E / 2)
+
+
+_N = (math.log(_m(_LAT1)) - math.log(_m(_LAT2))) / (math.log(_t(_LAT1)) - math.log(_t(_LAT2)))
+_AF = _A * _m(_LAT1) / (_N * _t(_LAT1) ** _N)
+_RHO0 = _AF * _t(_LAT0) ** _N
+
+
+def lcc_to_lonlat(x: float, y: float) -> tuple[float, float]:
+    """Metres in the SOI Lambert projection -> (longitude, latitude) in degrees, WGS 84 (Snyder, Map Projections:
+    A Working Manual, 1987, equations 15-5 and 15-7 to 15-11)."""
+    dx, dy = x - _FALSE_EASTING, _RHO0 - (y - _FALSE_NORTHING)
+    rho = math.copysign(math.hypot(dx, dy), _N)
+    t = (rho / _AF) ** (1 / _N)
+    lat = math.pi / 2 - 2 * math.atan(t)
+    for _ in range(8):
+        s = _E * math.sin(lat)
+        lat = math.pi / 2 - 2 * math.atan(t * ((1 - s) / (1 + s)) ** (_E / 2))
+    return math.degrees(math.atan2(dx, dy) / _N + _LON0), math.degrees(lat)
 
 
 def display_state(name: str) -> str:
@@ -87,53 +104,46 @@ def _lgd_rows(name: str) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def read_soi(path: Path = SOI_DISTRICTS) -> list[dict]:
+    """The SOI district polygons as GeoJSON-like features in longitude / latitude, with the source's attributes
+    (District, STATE, State_LGD, DISTRICT_L = the LGD district code)."""
+    features = []
+    with shapefile.Reader(str(path), encoding="utf-8") as reader:
+        for record in reader.iterShapeRecords():
+            geometry = record.shape.__geo_interface__
+            polygons = geometry["coordinates"] if geometry["type"] == "MultiPolygon" else [geometry["coordinates"]]
+            coordinates = [[[lcc_to_lonlat(x, y) for x, y in ring] for ring in polygon] for polygon in polygons]
+            features.append({"geometry": {"type": "MultiPolygon", "coordinates": coordinates},
+                             "properties": record.record.as_dict()})
+    return features
+
+
 def match_districts(features: list[dict]) -> tuple[list[dict], list[str]]:
-    """Give every source polygon its LGD state and district. Returns the features with properties
-    {dc, district, sc, state} (dc = sc = 0 for the unnamed slivers along a few state borders) and a list of
-    polygons that could not be matched."""
-    states = {_norm(r["state"]): r for r in _lgd_rows("states")}
-    districts = _lgd_rows("districts")
+    """Give every SOI polygon its LGD state and district, by the LGD code it carries. Returns the features with
+    properties {dc, district, sc, state} (dc = sc = 0 for the areas SOI marks "DISPUTED" between two states) and a
+    list of polygons that could not be matched."""
+    states = {int(r["state_code"]): r for r in _lgd_rows("states")}
+    districts = {int(r["district_code"]): r for r in _lgd_rows("districts")}
     out, problems = [], []
     for feature in features:
         p = feature["properties"]
-        if not p.get("state") or not p.get("district"):   # "DISPUTED (...)" slivers in the source
+        name, code = p["District"].strip(), str(p["DISTRICT_L"] or "").strip()
+        if name.startswith("DISPUTED"):
             out.append({"geometry": feature["geometry"], "properties": {"dc": 0, "district": "", "sc": 0, "state": ""}})
             continue
-        state = states.get(_norm(STATE_ALIASES.get(p["state"], p["state"])))
-        if state is None:
-            problems.append(f"no LGD state for {p['state']} / {p['district']}")
-            continue
-        rows = [r for r in districts if r["state_code"] == state["state_code"]]
-        by_name = {_norm(r["district"]): r for r in rows}
-        alias = DISTRICT_ALIASES.get((display_state(state["state"]), p["district"]))
-        row = by_name.get(_norm(alias)) if alias else None
-        name = _norm(p["district"])
-        if row is None:   # 1. the same name, give or take a spelling
-            best = process.extractOne(name, list(by_name), scorer=fuzz.ratio)
-            row = by_name[best[0]] if best and best[1] >= 85 else None
-        if row is None:   # 2. the code; new districts share their parent's Census code, so the name decides
-            code = str(p.get("dist_code") or "").lstrip("0")
-            by_code = [r for r in rows if code.isdigit() and code in (r["district_code"], r["census2011"].lstrip("0"))]
-            if by_code:
-                row = max(by_code, key=lambda r: fuzz.ratio(_norm(r["district"]), name))
-                truncated = len(name) < 6 or re.search(r"[>|@#\\]", p["district"])   # garbled in the source
-                if fuzz.ratio(_norm(row["district"]), name) < 60 and not truncated:
-                    row = None   # the code is of another district (the source mixes LGD and Census codes)
-        if row is None and len(name) >= 6:   # 3. a longer form of the name ("Kawardha (Kabirdham)")
-            best = process.extractOne(name, list(by_name), scorer=fuzz.WRatio)
-            row = by_name[best[0]] if best and best[1] >= 85 else None
-        if row is None and p["district"] in UNLINKED_NAMES:
-            out.append({"geometry": feature["geometry"],
-                        "properties": {"dc": -len(out) - 1, "district": UNLINKED_NAMES[p["district"]],
-                                       "sc": int(state["state_code"]), "state": display_state(state["state"])}})
-            continue
-        if row is None:
-            problems.append(f"no LGD district for {state['state']} / {p['district']} ({p.get('dist_code')})")
+        dc = PART_OF.get(name, int(code) if code.isdigit() else None)
+        row = districts.get(dc)
+        if row is not None:
+            state = states[int(row["state_code"])]
+            props = {"dc": dc, "district": COMMON_NAMES.get(row["district"], row["district"])}
+        elif name in UNLINKED and int(p["State_LGD"] or 0) in states:
+            state = states[int(p["State_LGD"])]
+            props = {"dc": UNLINKED[name][0], "district": UNLINKED[name][1]}
+        else:
+            problems.append(f"no LGD district for {p['STATE']} / {name} ({code or 'no code'})")
             continue
         out.append({"geometry": feature["geometry"],
-                    "properties": {"dc": int(row["district_code"]),
-                                   "district": COMMON_NAMES.get(row["district"], row["district"]),
-                                   "sc": int(state["state_code"]), "state": display_state(state["state"])}})
+                    "properties": {**props, "sc": int(state["state_code"]), "state": display_state(state["state"])}})
     return out, problems
 
 
@@ -322,16 +332,19 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
         return ~used[a] if flip else used[a]
 
     by_district = defaultdict(list)
+    disputed = []   # the areas SOI marks disputed between two states: land of India, in no district
     for f, polys in enumerate(feature_rings):
         props = features[f]["properties"]
-        if not props["dc"]:
-            continue
         for rings in polys:
             outer = ring_points(rings[0])
             if len(outer) < 4 or _area(outer) < 1e-8:   # only a speck smaller than the stored grid
                 continue
             kept = [rings[0]] + [r for r in rings[1:] if len(ring_points(r)) >= 4]
-            by_district[props["dc"]].append((outer, [[ref(a, flip) for a, flip in r] for r in kept], props))
+            polygon = [[ref(a, flip) for a, flip in r] for r in kept]
+            if props["dc"]:
+                by_district[props["dc"]].append((outer, polygon, props))
+            else:
+                disputed.append(polygon)
     districts = []
     for dc, parts in by_district.items():
         props = parts[0][2]
@@ -347,7 +360,7 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
             continue   # inside one district (the parts of a merged district)
         if len(own) == 1:
             kind = "india"   # coast or the border of India
-        elif len({sc for _, sc in sides}) > 1:
+        elif len({sc for _, sc in sides if sc}) > 1:   # (the edge of a disputed area is drawn as a district line)
             kind = "state"
         else:
             kind = "district"
@@ -371,17 +384,25 @@ def build_layers(features: list[dict], tolerance: float = TOLERANCE_DEG) -> dict
         biggest = max(own, key=lambda d: d["area"])
         lx, ly = (round(cx, 3), round(cy, 3)) if inside else (biggest["lx"], biggest["ly"])
         states.append({"sc": sc, "name": own[0]["state"], "lx": lx, "ly": ly, "area": round(total, 3)})
-    return {"scale": SCALE, "arcs": encoded, "districts": districts, "states": states, "lines": lines}
+    return {"scale": SCALE, "arcs": encoded, "districts": districts, "states": states, "lines": lines,
+            "disputed": disputed}
+
+
+def download_soi() -> None:
+    """The SOI district shapefile (a zip in two parts) into data/reference/soi/."""
+    data = b""
+    for part in SOI_PARTS:
+        resp = requests.get(SOI_REPO + part, timeout=600)
+        resp.raise_for_status()
+        data += resp.content
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        z.extractall(SOI_DIR)
 
 
 def build() -> None:
-    raw = RAW_DIR / "INDIA_DISTRICTS.geojson"
-    if not raw.exists():
-        RAW_DIR.mkdir(parents=True, exist_ok=True)
-        resp = requests.get(SOURCE_URL, timeout=600)
-        resp.raise_for_status()
-        raw.write_bytes(resp.content)
-    features, problems = match_districts(json.loads(raw.read_text(encoding="utf-8"))["features"])
+    if not SOI_DISTRICTS.exists():
+        download_soi()
+    features, problems = match_districts(read_soi())
     for problem in problems:
         print("  !", problem)
     layers = build_layers(features)

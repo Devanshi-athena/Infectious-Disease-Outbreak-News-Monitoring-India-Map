@@ -51,16 +51,16 @@ def test_views_and_review_override(factory):
     assert ids(apply_filters(df, Filters(view="all"))) == [1, 2, 3, 4, 6, 7]
 
 
-def test_india_boundary_and_mask():
-    from outbreak_monitor.gazetteer import _simplify, india_mask, load_boundary
-    boundary = load_boundary()
-    polygons = boundary["features"][0]["geometry"]["coordinates"]
-    points = [p for poly in polygons for p in poly[0]]
+def test_soi_projection_and_india_extent():
+    from outbreak_monitor.boundaries import lcc_to_lonlat
+    from outbreak_monitor.gazetteer import _simplify
+    from outbreak_monitor.map_view import _decoded
+    lon, lat = lcc_to_lonlat(4_000_000, 4_000_000)            # the projection's origin: 80 E, 24 N
+    assert abs(lon - 80) < 1e-9 and abs(lat - 24) < 1e-9
+    points = [p for polys in _decoded().values() for poly in polys for p in poly[0]]
     lats, lons = [p[1] for p in points], [p[0] for p in points]
-    # official boundary: from Indira Point (~6.75 N) to the northern tip (~37.1 N), incl. the islands
+    # India's official boundary (SOI): from Indira Point (~6.75 N) to the northern tip (~37.1 N), incl. the islands
     assert min(lats) < 7 and max(lats) > 37 and min(lons) < 68.5 and max(lons) > 97
-    mask = india_mask(boundary)["geometry"]["coordinates"]
-    assert len(mask) == 1 + len(polygons)                     # the world with every part of India cut out
     assert _simplify([[0, 0], [1, 0.001], [2, 0]], 0.01) == [[0, 0], [2, 0]]
 
 
@@ -249,7 +249,7 @@ def test_district_boundaries_cover_lgd_and_decode():
     topo = topology()
     codes = {d["dc"] for d in topo["districts"]}
     lgd = {int(r["district_code"]) for r in load_lgd("districts")}
-    assert len(lgd - codes) <= 20                       # only districts created after the 2023 boundaries
+    assert len(lgd - codes) <= 70                       # only districts created after the SOI edition (62)
     assert all(d["name"] and d["state"] for d in topo["districts"])
     assert all(ord(ch) < 128 for d in topo["districts"] for ch in d["name"] + d["state"])   # English names only
     assert {"Muzaffarabad", "Mirpur"} <= {d["name"] for d in topo["districts"] if d["state"] == "Jammu and Kashmir"}
@@ -265,8 +265,8 @@ def test_district_boundaries_cover_lgd_and_decode():
 def test_every_island_is_kept_and_small_islands_have_an_outline():
     from outbreak_monitor.map_view import island_halos, topology
     parts = {d["name"]: len(d["polygons"]) for d in topology()["districts"]}
-    # as many islands as the source file: none lost to simplification
-    assert (parts["Lakshadweep"], parts["Nicobars"], parts["South Andamans"]) == (11, 19, 34)
+    # every island of the SOI file larger than 0.01 km2 (the stored grid is ~100 m): 27 - 5 and 295 - 102
+    assert parts["Lakshadweep"] >= 22 and parts["North And Middle Andaman"] >= 193
     lakshadweep = next(d["dc"] for d in topology()["districts"] if d["name"] == "Lakshadweep")
     assert list(island_halos()) == [lakshadweep]                      # only a group too small to see gets one
     lats, lons = zip(*island_halos()[lakshadweep])
@@ -295,7 +295,6 @@ def test_district_counts_count_stories_once():
 
 def test_map_renders_without_foreign_tiles():
     import pandas as pd
-    from outbreak_monitor.gazetteer import india_mask, load_boundary
     from outbreak_monitor.map_view import alert_districts, build_map
     alerts = alert_districts(pd.DataFrame([{"alert": "Rise", "disease": "Dengue", "reports": 5, "district_lgd_code": 102},
                                            {"alert": "First report", "disease": "Malaria", "reports": 1,
@@ -304,8 +303,7 @@ def test_map_renders_without_foreign_tiles():
     item = {"la": 26.9, "lo": 75.8, "dc": 102, "st": "Rajasthan", "s": "new", "p": "Jaipur", "h": "x", "c": "<b>x</b>",
             "t": "2026-11-20"}
     for mode in ("news", "official", "both"):
-        page = build_map([item], [], {102: {"n": 1, "top": ""}}, {}, alerts, mode,
-                         india_mask(load_boundary())).get_root().render()
+        page = build_map([item], [], {102: {"n": 1, "top": ""}}, {}, alerts, mode).get_root().render()
         assert "openstreetmap" not in page.lower() and "World_Shaded_Relief" in page
         assert '"maxZoom": 16' in page
         # the card is escaped so that data cannot close the script element; official mode carries no news items

@@ -57,8 +57,8 @@ def topology() -> dict:
 
 
 @lru_cache(maxsize=1)
-def _decoded() -> dict[int, list]:
-    """dc -> polygons as lists of [x, y] rings (for locating a point in a district)."""
+def _arc_points() -> list[list[tuple[float, float]]]:
+    """Every arc of the topology as (longitude, latitude) points."""
     topo = topology()
     scale = topo["scale"]
     arcs = []
@@ -68,20 +68,21 @@ def _decoded() -> dict[int, list]:
             x, y = x + flat[i], y + flat[i + 1]
             pts.append((x, y))
         arcs.append([(px / scale, py / scale) for px, py in pts])
-    out = {}
-    for d in topo["districts"]:
-        polys = []
-        for poly in d["polygons"]:
-            rings = []
-            for ring in poly:
-                pts = []
-                for r in ring:
-                    arc = arcs[~r][::-1] if r < 0 else arcs[r]
-                    pts += arc if not pts else arc[1:]
-                rings.append(pts)
-            polys.append(rings)
-        out[d["dc"]] = polys
-    return out
+    return arcs
+
+
+def _ring(ring: list[int]) -> list[tuple[float, float]]:
+    arcs, pts = _arc_points(), []
+    for r in ring:
+        arc = arcs[~r][::-1] if r < 0 else arcs[r]
+        pts += arc if not pts else arc[1:]
+    return pts
+
+
+@lru_cache(maxsize=1)
+def _decoded() -> dict[int, list]:
+    """dc -> polygons as lists of [x, y] rings (for locating a point in a district)."""
+    return {d["dc"]: [[_ring(ring) for ring in poly] for poly in d["polygons"]] for d in topology()["districts"]}
 
 
 SMALL_ISLANDS_AREA = 0.02   # square degrees (~250 km2): a district of islands this small is hard to see or hover
@@ -460,16 +461,14 @@ class IndiaMap(MacroElement):
                      Satellite: {fillColor: '#FFFFFF', fillOpacity: 0}};
   var shapes = [];
   var fills = L.layerGroup().addTo(map);
-  // The land inside India's official outline, under the districts: where the district file stops a little short of
-  // the outline, the strip still reads as land
-  var officialOutline = D.mask.geometry.coordinates.slice(1).map(function (r) {
-    return r.map(function (p) { return [p[1], p[0]]; });
+  // Areas SOI marks disputed between two states: land of India in no district
+  (topo.disputed || []).forEach(function (poly) {
+    var land = L.polygon([poly.map(ring)], L.extend({renderer: fillCanvas, stroke: false, fill: true,
+                                                    interactive: false}, noDataStyle.Plain));
+    land._has = false;
+    fills.addLayer(land);
+    shapes.push(land);
   });
-  var officialLand = L.polygon(officialOutline, L.extend({renderer: fillCanvas, stroke: false, fill: true,
-                                                          interactive: false}, noDataStyle.Plain));
-  officialLand._has = false;
-  fills.addLayer(officialLand);
-  shapes.push(officialLand);
   function rings(d) { return d.polygons.map(function (p) { return p.map(ring); }); }
   topo.districts.forEach(function (d) {
     var c = primary.counts[d.dc], sec = secondary && D.official.counts[d.dc];
@@ -528,22 +527,23 @@ class IndiaMap(MacroElement):
     hatching.addTo(map);
   }
 
-  // Everything outside India's official boundary is covered
-  L.geoJSON(D.mask, {pane: 'mask', interactive: false,
-                     style: {fillColor: D.background, fillOpacity: 1, stroke: false}}).addTo(map);
+  // Everything outside India is covered: a polygon over the world with every ring of every district and disputed area
+  // cut out of it. It is filled even-odd, so a district inside another's hole is cut out again; India is exactly the
+  // land of the districts, and the district colours meet India's border line exactly
+  var world = [[-85, -180], [-85, 180], [85, 180], [85, -180]], cuts = [world];
+  topo.districts.forEach(function (d) { rings(d).forEach(function (p) { cuts.push.apply(cuts, p); }); });
+  (topo.disputed || []).forEach(function (p) { cuts.push.apply(cuts, p.map(ring)); });
+  L.polygon(cuts, {pane: 'mask', interactive: false, fillColor: D.background, fillOpacity: 1, stroke: false,
+                   fillRule: 'evenodd', smoothFactor: 1.2}).addTo(map);   // smoothed as the district fills are
 
   // Borders: districts, states, India; districts where reports are rising outlined in red
   var lines = {};
-  [['district', '#A3ACBA', 0.5], ['state', '#5B6B84', 1.3]].forEach(function (s) {
+  [['district', '#A3ACBA', 0.5], ['state', '#5B6B84', 1.3], ['india', '#33435C', 1.6]].forEach(function (s) {
     lines[s[0]] = L.polyline(topo.lines[s[0]].map(function (i) { return arcs[i]; }), {
       renderer: lineCanvas, color: s[1], weight: s[2], opacity: 0.95, interactive: false, smoothFactor: 1.2,
       lineJoin: 'round'
     }).addTo(map);
   });
-  // India's border and coast: the official outline itself (the edge of the mask), so the district colours, which the
-  // mask cuts at that outline, always end exactly at the line
-  lines.india = L.polyline(officialOutline, {renderer: lineCanvas, color: '#33435C', weight: 1.6, opacity: 0.95,
-                                             interactive: false, smoothFactor: 1.2, lineJoin: 'round'}).addTo(map);
   var alertLines = L.layerGroup().addTo(map);
   if (mode !== 'official') {
     Object.keys(D.alerts).forEach(function (dc) {
@@ -777,7 +777,7 @@ def _js(value) -> str:
 
 
 def build_map(news: list[dict], official: list[dict], news_counts: dict, official_counts: dict,
-              alerts: dict[int, dict], mode: str, mask: dict, bounds: list[list[float]] | None = None,
+              alerts: dict[int, dict], mode: str, bounds: list[list[float]] | None = None,
               max_zoom: int | None = None, select: int | None = None) -> folium.Map:
     """The map. news / official: items from news_items / official_items; *_counts: from district_counts;
     alerts: from alert_districts; mode: a key of MODES; select: a district (LGD code) to open selected."""
@@ -800,7 +800,7 @@ def build_map(news: list[dict], official: list[dict], news_counts: dict, officia
     topo["districts"] = [{**d, "name": html.escape(d["name"]), "state": html.escape(d["state"])}
                          for d in topo["districts"]]
     data = {
-        "topo": topo, "mode": mode, "mask": mask, "select": select, "halos": halos,
+        "topo": topo, "mode": mode, "select": select, "halos": halos,
         "news": {"items": [{k: v for k, v in i.items() if k != "ds"} for i in news] if mode != "official" else [],
                  "counts": news_counts},
         "official": {"items": official if mode != "news" else [], "counts": official_counts},

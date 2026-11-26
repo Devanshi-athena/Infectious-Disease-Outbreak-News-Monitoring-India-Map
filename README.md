@@ -272,7 +272,7 @@ LGD still lists many city areas as villages (Hadapsar in Pune), and the same vil
 
 `streamlit run app.py` opens it at http://localhost:8501.
 
-- **Map** of India only, on the official boundary (everything outside India is covered). Every name on the map is written by the tool in English, and the optional terrain and satellite backgrounds have no labels, so no foreign-script place names appear.
+- **Map** of India only, on the Survey of India boundaries (everything outside India is covered). Every name on the map is written by the tool in English, and the optional terrain and satellite backgrounds have no labels, so no foreign-script place names appear.
   - Districts are shaded by the number of reports (darker = more); districts where news reports are rising are outlined in red. Hovering a district shows its numbers, diseases, alerts and latest headlines.
   - Clicking a district makes it pop out (the rest of India dims and the map zooms to it): its reports appear as dots at their places, coloured by event status, with the full list in a panel on the right of the map. Clicking outside the district, the panel's ×, or Esc goes back. Districts with no reports aren't clickable.
   - When zoomed in to a state, reports that name only the state appear as a pill under its name; click it for the list.
@@ -354,8 +354,7 @@ Third-party data and services:
 | | Used for | Terms |
 |---|---|---|
 | [GeoNames](https://www.geonames.org) | place reference data | CC BY 4.0 |
-| [DataMeet India maps](https://github.com/datameet/maps/tree/master/Country) | India's official boundary on the map | CC0 |
-| [INDIAN-SHAPEFILES](https://github.com/datta07/INDIAN-SHAPEFILES) | state and district boundaries (2023), matched to LGD codes by `python -m outbreak_monitor.boundaries` | MIT |
+| [Survey of India Administrative Boundary Database](https://onlinemaps.surveyofindia.gov.in/Digital_Product_Show.aspx) (district level, 1:1 million; copy with geometry fixes at [surajreddyr/India-State-District-Administrative-Boundaries-Shapefiles](https://github.com/surajreddyr/India-State-District-Administrative-Boundaries-Shapefiles)) | India's boundary and the state and district boundaries on the map, linked to LGD codes by `python -m outbreak_monitor.boundaries` | free SOI digital product; follow SOI's terms of use |
 | [OpenStreetMap Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | locating villages and the newest districts | max 1 request/second, cached; data © OpenStreetMap contributors (ODbL) |
 | [Esri World Shaded Relief and World Imagery](https://www.esri.com/en-us/legal/terms/full-master-agreement) | map background (no labels) | free with attribution; check Esri's terms before public deployment |
 | [NCDC](https://ncdc.mohfw.gov.in/) | official outbreak reports | reuse with acknowledgement |
@@ -424,5 +423,5 @@ Coverage depends on what the news covers. Sources are in English and 12 Indian l
 - Translation is automatic and the names in the 12 languages have not yet been reviewed by native speakers.
 - History is limited: most regional sites have no usable archive, so the data goes back about 45 days, and alerts compare against only those weeks.
 - IDSP weekly reports arrive about two months late, so news and official records can only be compared later.
-- District boundaries are of 2023: the 15 districts created since are counted inside the district they came from (Delhi shows its earlier 11 districts), and the districts abolished in Rajasthan in December 2024 are merged into their parent district. Few localities get a village code.
+- The SOI district boundaries predate the newest districts: the 62 districts created since (e.g. Andhra Pradesh's 2022 districts, Rajasthan's of 2023, Ladakh's and Delhi's latest) are shown inside the district they came from. Few localities get a village code.
 - Most news sites' terms of use restrict automated collection; each needs permission before production use (see Responsible use).

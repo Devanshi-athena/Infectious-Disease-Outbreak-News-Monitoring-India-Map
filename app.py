@@ -25,7 +25,6 @@ from outbreak_monitor.dashboard_data import (BASELINE_WEEKS, EVENT_COLOURS, EVEN
                                              reports_by_state, save_reviews, state_disease_table,
                                              outbreak_alerts, outbreak_events, summary, to_ist, event_text)
 from outbreak_monitor.db import get_session_factory
-from outbreak_monitor.gazetteer import india_mask, load_boundary
 from outbreak_monitor.lgd import load as load_lgd
 from outbreak_monitor.map_view import (MODES, alert_districts, boundary_of, build_map, district_counts,
                                        news_items, official_items, state_bounds)
@@ -174,11 +173,6 @@ def cached_alerts(diseases: tuple, states: tuple, as_of=None):
     """Alerts for the disease and state filters, as of the end of the chosen period (default: the latest report)."""
     return outbreak_alerts(apply_filters(load(), Filters(diseases=list(diseases), states=list(states))), as_of)
 
-
-@st.cache_resource(show_spinner=False)
-def india_mask_shape():
-    """A mask that hides everything outside India's official boundary."""
-    return india_mask(load_boundary())
 
 
 @st.cache_resource(show_spinner=False)
@@ -384,7 +378,7 @@ with map_col:
         focus, focus_zoom = None, None
     fmap = build_map(news_on_map, official_on_map,
                      district_counts(news_on_map), district_counts(official_on_map),
-                     alert_districts(alerts), map_mode, india_mask_shape(), bounds=focus, max_zoom=focus_zoom,
+                     alert_districts(alerts), map_mode, bounds=focus, max_zoom=focus_zoom,
                      select=selected_district)
     st_folium(fmap, height=740, use_container_width=True, returned_objects=[], key="map")
     st.caption("Districts are shaded by the number of reports (darker = more); districts where news reports are "
