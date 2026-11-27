@@ -14,7 +14,7 @@ outside India's official boundary is covered.
 import html
 import json
 import math
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 
 import folium
@@ -24,6 +24,8 @@ from folium.plugins import Fullscreen
 from jinja2 import Template
 
 from .boundaries import DISTRICTS_FILE, _in_polygon
+from .config import load_disease_config
+from .matcher import KeywordMatcher
 from .dashboard_data import EVENT_COLOURS, EVENT_LABELS, OFFICIAL_COLOUR, _esc, href, published_ist
 
 INDIA_BOUNDS = [[6.5, 68.0], [37.2, 97.5]]
@@ -170,48 +172,91 @@ def _date(value) -> str:
     return dt.strftime("%d %b %Y") if dt else ""
 
 
-NEWS_COLUMNS = ["story_id", "published_at", "event_status", "diseases", "headline", "headline_original",
-                "language_name", "article_url", "source_name", "place", "state", "district_lgd_code", "latitude",
-                "longitude"]
+NEWS_COLUMNS = ["story_id", "published_at", "published_date", "event_status", "diseases", "headline",
+                "headline_original", "language_name", "article_url", "source_name", "place", "state", "district",
+                "district_lgd_code", "latitude", "longitude"]
+STATUS_RANK = ("new", "suspected", "unclear", "historical")   # an outbreak shows its most serious report
+OTHER_REPORTS_SHOWN = 5                                        # reports listed on an outbreak's card besides the first
 
 
 def _missing(value) -> bool:
     return value is None or (isinstance(value, float) and value != value)
 
 
+@lru_cache(maxsize=1)
+def _matcher() -> KeywordMatcher:
+    return KeywordMatcher(load_disease_config().diseases)
+
+
+def _lead_first(stories: list[dict], disease: str | None) -> list[dict]:
+    """The reports of an outbreak with a report whose headline names its disease first: a report of two diseases
+    ("dengue and malaria cases rise") belongs to both outbreaks, and should not head the card of the one its headline
+    does not name."""
+    lead = next((r for r in stories if disease in _matcher().match(r["headline"])), None) if disease else None
+    return [lead] + [r for r in stories if r is not lead] if lead else stories
+
+
+def _link(url, text: str, cls: str = "") -> str:
+    attr = f' class="{cls}"' if cls else ""
+    return f'<a{attr} href="{href(url)}" target="_blank" rel="noopener noreferrer">{_esc(text)}</a>'
+
+
 def news_items(df: pd.DataFrame) -> list[dict]:
-    """One item per story located in India, newest first: position, district, status, diseases and a small card
-    (HTML, every value escaped) for the map's panel. Works on plain records: much faster than pandas row access."""
+    """One item per outbreak in the news, newest first. An outbreak is the reports of one disease in one district (or
+    state-wide, when no district is named) in one calendar week, from any source or language: the rule of the
+    Outbreaks tab (dashboard_data.outbreak_events), so five articles about one outbreak count once. Each item has its
+    position (its lead report's), district, most serious status and a card (HTML, every value escaped) listing its
+    reports and sources. A report of two diseases belongs to two outbreaks. Works on plain records: much faster than
+    pandas row access."""
     if df.empty:
         return []
     located = df[(df["country"] == "India") & df["latitude"].notna() & df["longitude"].notna()]
-    stories: dict = {}
+    if "published_date" not in located:   # the date in India (load_articles adds it)
+        located = located.assign(published_date=[published_ist(v).date() if published_ist(v) else None
+                                                 for v in located["published_at"]])
+    if "district" not in located:
+        located = located.assign(district=None)
+    outbreaks: dict = {}
     for row in located.sort_values("published_at")[NEWS_COLUMNS].to_dict("records"):
-        stories.setdefault(row["story_id"], []).append(row)
+        code = None if _missing(row["district_lgd_code"]) else row["district_lgd_code"]
+        district = code if code is not None else (row["district"] if isinstance(row["district"], str) else None)
+        day = row["published_date"]
+        week = day - timedelta(days=day.weekday()) if isinstance(day, date) else None
+        for disease in row["diseases"] or [None]:
+            outbreaks.setdefault((disease, row["state"], district, week), []).append(row)
     items = []
-    for group in stories.values():
-        first = group[0]
-        status = first["event_status"] if first["event_status"] in EVENT_COLOURS else "unclear"
+    for (disease, *_), group in outbreaks.items():
+        first, last = group[0], group[-1]
+        status = next((s for s in STATUS_RANK if any(r["event_status"] == s for r in group)), "unclear")
         colour = EVENT_COLOURS[status]
-        disease_list = sorted({d for r in group for d in (r["diseases"] or [])})
-        original = first["headline_original"] if isinstance(first["headline_original"], str) and \
-            first["headline_original"] else None
-        sources = " · ".join(f'<a href="{href(r["article_url"])}" target="_blank" rel="noopener noreferrer">'
-                             f'{_esc(r["source_name"])}</a>' for r in group)
+        stories = _lead_first(list({r["story_id"]: r for r in group}.values()), disease)   # one per story
+        lead = stories[0]                                                  # heads the card and places the dot
+        code = None if _missing(lead["district_lgd_code"]) else lead["district_lgd_code"]
+        sources = list(dict.fromkeys(r["source_name"] for r in group))
+        dates = _date(first["published_at"]) if _date(first["published_at"]) == _date(last["published_at"]) \
+            else f'{_date(first["published_at"])} – {_date(last["published_at"])}'
+        original = lead["headline_original"] if isinstance(lead["headline_original"], str) and \
+            lead["headline_original"] else None
+        count = (f'<div class="mc-n">{len(stories)} reports from {len(sources)} '
+                 f'source{"" if len(sources) == 1 else "s"}</div>' if len(stories) > 1 else "")
+        others = "".join(f'<div class="mc-r">{_link(r["article_url"], r["headline"])} '
+                         f'<span>· {_esc(r["source_name"])}</span></div>' for r in stories[1:1 + OTHER_REPORTS_SHOWN])
+        more = len(stories) - 1 - OTHER_REPORTS_SHOWN
+        others += f'<div class="mc-r"><span>+ {more} more</span></div>' if more > 0 else ""
         card = (f'<div class="mc" style="border-left-color:{colour}">'
                 f'<div class="mc-top"><span class="mc-chip" style="color:{colour};background:{colour}1A">'
-                f'{EVENT_LABELS[status]}</span><span class="mc-dis">{_esc(", ".join(disease_list) or "—")}</span>'
-                f'<span class="mc-date">{_date(first["published_at"])}</span></div>'
-                f'<a class="mc-h" href="{href(first["article_url"])}" target="_blank" rel="noopener noreferrer">'
-                f'{_esc(first["headline"])}</a>'
-                + (f'<div class="mc-o">{_esc(original)} · {_esc(first["language_name"])}</div>' if original else "")
-                + f'<div class="mc-m">{_esc(first["place"])}</div><div class="mc-s">{sources}</div></div>')
-        code = None if _missing(first["district_lgd_code"]) else first["district_lgd_code"]
-        items.append({"la": round(float(first["latitude"]), 4), "lo": round(float(first["longitude"]), 4),
-                      "dc": boundary_of(code, first["latitude"], first["longitude"]),
-                      "st": _esc(first["state"]) if isinstance(first["state"], str) else "",
-                      "s": status, "p": _esc(first["place"]), "h": _esc(first["headline"]), "c": card,
-                      "t": str(first["published_at"]), "ds": disease_list})
+                f'{EVENT_LABELS[status]}</span><span class="mc-dis">{_esc(disease or "—")}</span>'
+                f'<span class="mc-date">{dates}</span></div>'
+                + _link(lead["article_url"], lead["headline"], "mc-h")
+                + (f'<div class="mc-o">{_esc(original)} · {_esc(lead["language_name"])}</div>' if original else "")
+                + f'<div class="mc-m">{_esc(lead["place"])}</div>{count}{others}'
+                + f'<div class="mc-s">{" · ".join(_link(r["article_url"], r["source_name"]) for r in group)}</div>'
+                + '</div>')
+        items.append({"la": round(float(lead["latitude"]), 4), "lo": round(float(lead["longitude"]), 4),
+                      "dc": boundary_of(code, lead["latitude"], lead["longitude"]),
+                      "st": _esc(lead["state"]) if isinstance(lead["state"], str) else "",
+                      "s": status, "p": _esc(lead["place"]), "h": _esc(lead["headline"]), "c": card,
+                      "t": str(last["published_at"]), "ds": [disease] if disease else []})
     items.sort(key=lambda i: i["t"], reverse=True)
     return items
 
@@ -331,6 +376,10 @@ class IndiaMap(MacroElement):
   .mc-o { color: #5A687D; font-size: 11.5px; }
   .mc-m, .mc-s { color: #5A687D; font-size: 11.5px; margin-top: 2px; }
   .mc-s a { color: #1554A6; text-decoration: none; font-weight: 500; }
+  .mc-n { font-size: 11px; font-weight: 700; color: #3A4A63; margin: 5px 0 2px 0; }
+  .mc-r { font-size: 11.5px; line-height: 1.35; margin: 2px 0 0 8px; color: #5A687D; }
+  .mc-r a { color: #243247; text-decoration: none; }
+  .mc-r a:hover { color: #1554A6; }
   /* legend */
   .mlg { background: rgba(255,255,255,.97); border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 12px;
          width: 214px; font: 12px Inter, 'Segoe UI', Arial, sans-serif; color: #172033;
@@ -373,8 +422,10 @@ class IndiaMap(MacroElement):
     }
     return null;
   }
-  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
-  var unit = mode === 'official' ? 'IDSP record' : 'news report';
+  function plural(n, word) {   // 'outbreak in the news' -> 'outbreaks in the news'
+    return n + ' ' + (n === 1 ? word : word.replace(/(\\w)( in the news)?$/, '$1s$2'));
+  }
+  var unit = mode === 'official' ? 'IDSP record' : 'outbreak in the news';
 
   // Base: plain (default), terrain or satellite; none of them carries any label
   var bases = {}, base = 'Plain';
@@ -430,7 +481,7 @@ class IndiaMap(MacroElement):
   function openDistrict(dc) {
     var d = districts[dc], alerts = (mode !== 'official' && D.alerts[dc] && D.alerts[dc].list) || [];
     var body = alerts.map(function (a) { return '<div class="mp-alert">' + a + '</div>'; }).join('');
-    body += section(mode === 'official' ? 'Official IDSP records' : 'News reports', primaryBy[dc]);
+    body += section(mode === 'official' ? 'Official IDSP records' : 'Outbreaks in the news', primaryBy[dc]);
     if (secondary) body += section('Official IDSP records', secondaryBy[dc]);
     if (!body) body = '<div class="mp-more">Nothing for the current filters.</div>';
     openPanel(d.name, d.state + (d.dc > 0 ? ' · LGD ' + d.dc : ''), body);
@@ -607,7 +658,7 @@ class IndiaMap(MacroElement):
   });
   Object.keys(byState).forEach(function (st) {
     var s = stateLabelAt[st], g = byState[st];
-    var text = plural(g.length, 'state-wide ' + (mode === 'official' ? 'record' : 'report'));
+    var text = plural(g.length, 'state-wide ' + (mode === 'official' ? 'record' : 'outbreak'));
     statePills.addLayer(L.marker([s.ly, s.lx], {pane: 'pills', icon: L.divIcon({className: '', iconSize: [170, 22],
         iconAnchor: [85, -9], html: '<div style="text-align:center"><span class="spill">' + text + '</span></div>'})})
       .bindTooltip('Reports that name ' + st + ' but no district. Click for the list.', {direction: 'bottom'})
@@ -638,7 +689,7 @@ class IndiaMap(MacroElement):
       }
       var px = g.length > 1 ? 18 : 14;   // several reports at one place: a larger dot
       var ax = official && secondary ? -5 : px / 2 + 2;   // IDSP squares sit beside a news dot at the same place
-      var what = plural(g.length, official ? 'IDSP record' : 'news report');
+      var what = plural(g.length, official ? 'IDSP record' : 'outbreak in the news');
       dots.addLayer(L.marker([first.la, first.lo], {riseOnHover: true, icon: L.divIcon({className: 'pt-in',
           iconSize: [px + 4, px + 4], iconAnchor: [ax, px / 2 + 2],
           html: '<div class="pt' + (official ? ' sq' : '') + '" style="width:' + px + 'px;height:' + px +
@@ -712,7 +763,7 @@ class IndiaMap(MacroElement):
              (i === 0 ? ';border-radius:3px 0 0 3px' : '') + (i === shades.length - 1 ? ';border-radius:0 3px 3px 0' : '') +
              '"></div><div style="font-size:10.5px;color:#5A687D;margin-top:2px">' + t + '</div></div>';
     }).join('');
-    var h = '<div class="mlg-h">' + (mode === 'official' ? 'IDSP records' : 'News reports') + ' per district</div>' +
+    var h = '<div class="mlg-h">' + (mode === 'official' ? 'IDSP records' : 'Outbreaks in the news') + ' per district</div>' +
             '<div style="display:flex;gap:2px">' + ramp + '</div>';
     if (mode !== 'official') h += '<div class="mlg-r" style="margin-top:7px"><span style="width:16px;height:11px;' +
         'border:2px solid ' + D.alertColour + ';border-radius:2px"></span>Reports rising (last 7 days)</div>';
@@ -728,7 +779,7 @@ class IndiaMap(MacroElement):
       });
       if (mode !== 'news') h += '<div class="mlg-r"><span style="width:11px;height:11px;border-radius:3px;background:' +
              D.officialColour + ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></span>IDSP outbreak record</div>';
-      h += '<div class="mlg-r" style="color:#5A687D">A larger dot: several reports at one place</div>';
+      h += '<div class="mlg-r" style="color:#5A687D">A larger dot: several at one place</div>';
     }
     h += '<div class="mlg-hint">' + (selected === null
           ? 'Hover a district for its numbers. Click it to see its reports on the map.'

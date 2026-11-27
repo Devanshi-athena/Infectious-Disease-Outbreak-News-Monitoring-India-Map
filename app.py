@@ -344,8 +344,8 @@ measure of disease incidence or outbreak severity. Sources cover English and 12 
 # ---------------------------------------------------------------- key figures
 st.markdown('<div class="kpis">'
             + kpi("news", "#1554A6", "#E8F0FB", "Articles", f"{totals['articles']:,}", "matching the filters")
-            + kpi("layers", "#D64545", "#FDECEC", "Stories mapped", f"{len(news_on_map):,}",
-                  "each report once, however many publishers")
+            + kpi("layers", "#D64545", "#FDECEC", "Outbreaks mapped", f"{len(news_on_map):,}",
+                  "a disease in one place in one week, however many reports")
             + kpi("pin", "#7C3AED", "#F1EBFE", "Locations", f"{totals['locations']:,}", "states, districts, towns")
             + kpi("shield", OFFICIAL_COLOUR, "#E6F4EE", "Official records", f"{len(official_matching):,}",
                   "IDSP weekly reports")

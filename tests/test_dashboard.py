@@ -92,11 +92,14 @@ def test_map_items_and_totals(factory):
         df = apply_filters(load_articles(s), Filters(include_abroad=True))
         totals = summary(df, s)
     items = news_items(df)
-    assert len(items) == 3                                    # articles 1+2 are one story; 5 is abroad: not mapped
+    # one outbreak per disease, place and week: story 1 (articles 1+2) and story 6 are dengue in Pune that week;
+    # 3 is measles in Kozhikode; 5 is abroad: not mapped
+    assert len(items) == 2
     assert (totals["articles"], totals["locations"]) == (5, 2)
     assert totals["last_refresh"].strftime("%H:%M %Z") == "15:00 IST"
     card = next(i["c"] for i in items if "Site B" in i["c"])
     assert "Site A" in card and "Pune, Maharashtra" in card and 'href="https://b.in/2"' in card
+    assert "2 reports from 2 sources" in card and 'href="https://a.in/6"' in card
 
 
 def test_map_cards_escape_external_text(factory):
@@ -137,8 +140,8 @@ def test_app_runs_without_errors(factory, monkeypatch):
     monkeypatch.setattr(db, "_default_factory", factory)  # the app reads the test database
     at = AppTest.from_file("../app.py", default_timeout=120).run()
     assert not at.exception
-    # matching articles, stories on the map (articles 1+2 are one story), distinct locations
-    assert kpi_values(at)[:3] == ["4", "3", "2"]
+    # matching articles, outbreaks on the map (dengue in Pune: articles 1, 2 and 6; measles in Kozhikode), locations
+    assert kpi_values(at)[:3] == ["4", "2", "2"]
     state_filter = at.sidebar.multiselect[2]      # group, disease, state, source
     state_filter.set_value(["Kerala"]).run()
     assert not at.exception and kpi_values(at)[0] == "1"
@@ -273,7 +276,7 @@ def test_every_island_is_kept_and_small_islands_have_an_outline():
     assert 7.5 < min(lats) and max(lats) < 12.5 and 71.5 < min(lons) and max(lons) < 74.5
 
 
-def test_district_counts_count_stories_once():
+def test_district_counts_count_outbreaks_once():
     import pandas as pd
     from outbreak_monitor.map_view import district_counts, news_items, shade
     df = pd.DataFrame({"country": ["India"] * 4, "story_id": [1, 1, 2, 3],
@@ -287,9 +290,12 @@ def test_district_counts_count_stories_once():
                        "source_name": ["X", "Y", "X", "X"], "place": ["Jaipur"] * 3 + ["Rajasthan"],
                        "state": ["Rajasthan"] * 4})
     items = news_items(df)
-    assert len(items) == 3 and {i["dc"] for i in items} == {102, None}   # story 3 names only the state
+    # outbreaks: dengue in district 102 (stories 1 and 2), malaria there (story 2), dengue state-wide (story 3)
+    assert len(items) == 3 and {i["dc"] for i in items} == {102, None}
     counts = district_counts(items)
-    assert counts == {102: {"n": 2, "top": "Dengue 2, Malaria 1"}}
+    assert counts == {102: {"n": 2, "top": "Dengue 1, Malaria 1"}}
+    dengue = next(i["c"] for i in items if i["dc"] == 102 and i["ds"] == ["Dengue"])
+    assert "2 reports from 2 sources" in dengue                       # story 1 from X and Y, story 2 from X
     assert shade(0) is None and shade(1) != shade(2) and shade(16) == shade(100)
 
 
